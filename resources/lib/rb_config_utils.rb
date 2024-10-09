@@ -107,7 +107,7 @@ module Config_utils
       content = {
         "run_list": [
           "role[sensor]",
-          mode == "proxy" ? "role[ipscp-sensor]" : "role[ips-sensor]"
+          mode == "proxy" ? "role[intrusioncp-sensor]" : "role[intrusion-sensor]"
         ],
         "redBorder": {
           "force-run-once": true

@@ -1,4 +1,4 @@
-PACKAGE_NAME?=	redborder-ips
+PACKAGE_NAME?=	redborder-intrusion
 
 VERSION?=	$(shell git describe --abbrev=6 --tags HEAD --always | sed 's/-/_/g')
 

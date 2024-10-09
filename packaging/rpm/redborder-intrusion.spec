@@ -1,20 +1,20 @@
 %undefine __brp_mangle_shebangs
 
-Name: redborder-ips
+Name: redborder-intrusion
 Version: %{__version}
 Release: %{__release}%{?dist}
 BuildArch: noarch
-Summary: Main package for redborder ips
+Summary: Main package for redborder intrusion
 
 License: AGPL 3.0
-URL: https://github.com/redBorder/redborder-ips
+URL: https://github.com/redBorder/redborder-intrusion
 Source0: %{name}-%{version}.tar.gz
 
 Requires: bash dialog dmidecode rsync nc telnet redborder-common redborder-chef-client redborder-rubyrvm redborder-cli rb-register bridge-utils bpctl pfring-dkms pfring net-tools bind-utils ipmitool watchdog bp_watchdog snort barnyard2 dhclient
 Requires: chef-workstation
 Requires: network-scripts network-scripts-teamd
 Requires: redborder-cgroups
-Requires: daq = 2.0.7 daq-modules = 2.0.7
+Requires: daq = 3.0.0 daq-modules = 3.0.0
 
 %description
 %{summary}
@@ -32,7 +32,7 @@ mkdir -p %{buildroot}/usr/lib/redborder/lib
 mkdir -p %{buildroot}/etc/profile.d
 mkdir -p %{buildroot}/var/chef/cookbooks
 mkdir -p %{buildroot}/etc/chef/
-install -D -m 0644 resources/redborder-ips.sh %{buildroot}/etc/profile.d
+install -D -m 0644 resources/redborder-intrusion.sh %{buildroot}/etc/profile.d
 install -D -m 0644 resources/dialogrc %{buildroot}/etc/redborder
 cp resources/bin/* %{buildroot}/usr/lib/redborder/bin
 cp resources/scripts/* %{buildroot}/usr/lib/redborder/scripts
@@ -63,7 +63,7 @@ echo "kernel.printk = 1 4 1 7" > /usr/lib/sysctl.d/99-redborder-printk.conf
 /usr/lib/redborder/bin
 /usr/lib/redborder/scripts
 %defattr(0755,root,root)
-/etc/profile.d/redborder-ips.sh
+/etc/profile.d/redborder-intrusion.sh
 /usr/lib/redborder/lib/dhclient-enter-hooks
 %defattr(0644,root,root)
 /etc/chef/
@@ -78,20 +78,6 @@ echo "kernel.printk = 1 4 1 7" > /usr/lib/sysctl.d/99-redborder-printk.conf
 %doc
 
 %changelog
-* Thu Dec 14 2023 Miguel Negrón <manegron@redborder.com> - 1.4.0-1
-- Set version for daq to 2.0.7
-
-* Thu Dec 14 2023 Miguel Álvarez <malvarez@redborder.com> - 1.3.5-1
-- Add cgroups
-
-* Tue Nov 21 2023 Vicente Mesa <vimesa@redborder.com> - 1.3.4-1
-- Add dhclient
-
-* Tue Nov 14 2023 Miguel Negrón <manegron@redborder.com> - 1.3.3-1
-- add network scripts
-
-* Mon Oct 02 2023 Miguel Negrón <manegron@redborder.com> - 1.3.2-1
-- Add new script and open kafka port
 
 * Mon Mar 21 2021 Miguel Negron <manegron@redborder.com> - 0.0.1-1
 - first spec version

@@ -107,7 +107,7 @@ end
 
 # Create /etc/chef/nodename file
 File.open("/etc/chef/nodename", "w+") do |f|
-  f.puts "rbips-#{response_json['sensor_id']}"
+  f.puts "rbintrusion-#{response_json['sensor_id']}"
 end
 
 exit 0

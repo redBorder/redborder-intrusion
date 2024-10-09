@@ -1,7 +1,7 @@
 {
   "run_list": [
     "role[sensor]",
-    "role[ipscp-sensor]"
+    "role[intrusion-sensor]"
   ],
   "redBorder": {
     "force-run-once": false
