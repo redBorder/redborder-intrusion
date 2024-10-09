@@ -1,6 +1,6 @@
-# redborder-ips Main package
+# redborder-intrusion Main package
  
-Main package to install redborder ips in Rocky Linux 9
+Main package to install redborder intrusion in Rocky Linux 9 ( like redborder-ips but with snort3 and without barnyard2 ) 
 
 #### Platforms
 
@@ -10,7 +10,7 @@ Main package to install redborder ips in Rocky Linux 9
 
 1. Install the redborder repo following the steps described in https://repo.redborder.com
 
-2. yum install redborder-ips
+2. yum install redborder-intrusion
 
 ## Contributing
 
@@ -23,8 +23,6 @@ Main package to install redborder ips in Rocky Linux 9
 
 ## License and Authors
 
-- Luis Blanco <ljblanco@redborder.com>
-- Miguel Negrón <manegron@redborder.com>
-- David Vanhoucke <dvanhoucke@redborder.com>
+- Miguel Álvarez <malvarez@redborder.com>
 
 LICENSE: AFFERO GENERAL PUBLIC LICENSE, Version 3, 19 November 2007
