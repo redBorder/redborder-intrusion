@@ -168,7 +168,7 @@ module Config_utils
     def self.generate_random_hostname
       characters = ('a'..'z').to_a + ('0'..'9').to_a
       random_id = Array.new(8) { characters.sample }.join
-      hostname = "rbips-#{random_id}"
+      hostname = "rbintrusion-#{random_id}"
       hostname
     end
 

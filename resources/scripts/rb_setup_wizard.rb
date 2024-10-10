@@ -71,7 +71,7 @@ puts "\033]0;redborder - setup wizard\007"
 general_conf = {
     "webui_host" => "rblive.redborder.com",
     "webui_user" => "admin",
-    "ips_node_name" => "ips-sensor",
+    "ips_node_name" => "intrusion-sensor",
     "webui_pass" => "",
     "registration_mode" => "proxy",
     "cloud_address" => "rblive.redborder.com",
