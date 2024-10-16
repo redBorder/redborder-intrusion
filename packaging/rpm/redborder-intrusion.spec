@@ -10,7 +10,7 @@ License: AGPL 3.0
 URL: https://github.com/redBorder/redborder-intrusion
 Source0: %{name}-%{version}.tar.gz
 
-Requires: bash dialog dmidecode rsync nc telnet redborder-common redborder-chef-client redborder-rubyrvm redborder-cli rb-register bridge-utils bpctl pfring-dkms pfring net-tools bind-utils ipmitool watchdog bp_watchdog snort dhclient
+Requires: bash dialog dmidecode rsync nc telnet redborder-common redborder-chef-client redborder-rubyrvm redborder-cli rb-register bridge-utils bpctl net-tools bind-utils ipmitool watchdog bp_watchdog snort dhclient
 Requires: chef-workstation
 Requires: network-scripts network-scripts-teamd
 Requires: redborder-cgroups
@@ -52,7 +52,6 @@ install -D -m 0755 resources/lib/dhclient-enter-hooks %{buildroot}/usr/lib/redbo
 %post
 [ -f /usr/lib/redborder/bin/rb_rubywrapper.sh ] && /usr/lib/redborder/bin/rb_rubywrapper.sh -c
 systemctl daemon-reload
-systemctl enable pf_ring && systemctl start pf_ring
 # adjust kernel printk settings for the console
 echo "kernel.printk = 1 4 1 7" > /usr/lib/sysctl.d/99-redborder-printk.conf
 /sbin/sysctl --system > /dev/null 2>&1
