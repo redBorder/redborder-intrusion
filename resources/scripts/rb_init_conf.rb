@@ -77,17 +77,6 @@ system('service kdump stop &>/dev/null')
 system('rm -f /etc/modprobe.d/redBorder.conf')
 
 num_segments = segments.nil? ? 0 : segments.count
-num_slots = Config_utils.get_pf_ring_num_slots(num_segments)
-pfring_bypass_interfaces = Config_utils.get_pf_ring_bypass_interfaces
-puts "Updating pf_ring module configuration.."
-system('modprobe -r pf_ring')
-
-system('modinfo pf_ring | grep -q bypass_interfaces')
-if $?.success?
-  `echo "options pf_ring enable_tx_capture=0 enable_frag_coherence=1 min_num_slots=#{num_slots} bypass_interfaces=#{pfring_bypass_interfaces.join(',')}" >> /etc/modprobe.d/redBorder.conf`
-else
-  `echo "options pf_ring enable_tx_capture=0 enable_frag_coherence=1 min_num_slots=#{num_slots}" >> /etc/modprobe.d/redBorder.conf`
-end
 
 # Set igb RSS value to 0 for an automatic managing of queues
 `echo "options igb RSS=0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0" > /etc/modprobe.d/redBorderStatic.conf`
@@ -98,12 +87,10 @@ open("/etc/depmod.d/kmod-redBorder.conf", 'w') { |f|
   f.puts "# redBorder depmod configuration"
   f.puts "# override default search ordering for kmod packaging"
   f.puts "override bpctl_mod * weak-updates/bpctl_mod"
-  f.puts "override pf_ring   * weak-updates/pf_ring"
   f.puts "override ixgbe * weak-updates/ixgbe"
 }
 
 system('depmod')
-system('modprobe pf_ring')
 sleep 3
 
 ####################
