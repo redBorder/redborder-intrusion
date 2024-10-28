@@ -206,7 +206,7 @@ unless network.nil? # network will not be defined in cloud deployments
         f.puts "DEVICE=#{segment['name']}"
         f.puts "TYPE=Bridge"
         f.puts "BOTPROTO=none"
-        f.puts "ONBOOT=yes"
+        f.puts "ONBOOT=no"
         f.puts "IPV6_AUTOCONF=no"
         f.puts "IPV6INIT=no"
         f.puts "DELAY=0"
