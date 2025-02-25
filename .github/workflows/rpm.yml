@@ -22,7 +22,7 @@ jobs:
       - name: Create tag based on metadata.rb
         id: create_tag
         run: |
-          tag=$(cat ./VERSION)
+          TAG=$(cat ./VERSION)
           echo "TAG=$TAG" >> $GITHUB_ENV
         shell: bash
 
