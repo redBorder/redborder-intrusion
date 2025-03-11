@@ -91,7 +91,7 @@ text = <<EOF
 This wizard will guide you through the necessary configuration of the device
 in order to convert it into a redborder ips sensor.
 
-It will go through the following required steps: network configuration, 
+It will go through the following required steps: network configuration,
 segments configuration, and domain and DNS. After that this process will perform
 a sensor regitration within the redborder manager.
 
@@ -275,7 +275,7 @@ EOF
         general_conf["ipmi"]["ip"] = ipmiconf.conf["IP:"] if !ipmiconf.conf.empty? and ipmiconf.conf["IP:"]
         general_conf["ipmi"]["netmask"] = ipmiconf.conf["Netmask:"] if !ipmiconf.conf.empty? and ipmiconf.conf["Netmask:"]
         general_conf["ipmi"]["gateway"] = ipmiconf.conf["Gateway:"] if !ipmiconf.conf.empty? and ipmiconf.conf["Gateway:"]
-        
+
     end
 end
 ##########################
@@ -289,6 +289,8 @@ segments_conf = SegmentsConf.new
 # If there is only one interfaces this is for sure the management
 if general_conf["network"]["interfaces"].count  == 1
   segments_conf.management_interface = general_conf["network"]["interfaces"].first
+else
+  segments_conf.management_interface = general_conf["network"]["management_interface"]
 end
 segments_conf.segments = Config_utils.net_segment_autoassign_bypass(init_conf_segments, segments_conf.management_interface) rescue []
 
@@ -340,7 +342,7 @@ EOF
     make_registration = dialog.yesno(text,0,0)
 end
 
-if make_registration 
+if make_registration
     if registration_mode == "proxy"
         ###############################
         # CLOUD ADDRESS CONFIGURATION #
@@ -361,9 +363,9 @@ if make_registration
         init_conf_webui_address_conf.doit # launch wizard
         cancel_wizard if init_conf_webui_address_conf.cancel
         general_conf["webui_host"] = init_conf_webui_address_conf.conf[:host]
-        general_conf["webui_user"] = init_conf_webui_address_conf.conf[:user]   
+        general_conf["webui_user"] = init_conf_webui_address_conf.conf[:user]
         general_conf["webui_pass"] = init_conf_webui_address_conf.conf[:pass]
-        general_conf["ips_node_name"] = init_conf_webui_address_conf.conf[:node_name]      
+        general_conf["ips_node_name"] = init_conf_webui_address_conf.conf[:node_name]
     end
 end
 
@@ -425,7 +427,7 @@ if registration_mode == "proxy" and make_registration
     general_conf.delete('webui_user')
     general_conf.delete('webui_pass')
     general_conf.delete('ips_node_name')
-    
+
 elsif make_registration
     general_conf.delete('cloud_address')
     text += "    Host : #{general_conf['webui_host']}\n"
