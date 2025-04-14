@@ -25,7 +25,7 @@ def local_tty_warning_wizard
 end
 
 opt = Getopt::Std.getopts("hrf")
-if opt["h"] 
+if opt["h"]
   printf "rb_init_conf [-r] \n"
   printf "    -r                -> register sensor with manager\n"
   printf "    -f                -> force configure in non local tty\n"
@@ -50,6 +50,7 @@ else
 
   ips_node_name = init_conf['ips_node_name']
 end
+cdomain = init_conf['cdomain']
 
 network = init_conf['network']
 
@@ -63,6 +64,9 @@ management_interface = init_conf['network']['management_interface'] if init_conf
 open("/etc/redborder/rb_init_conf.conf", "w") { |f|
   f.puts "#REBORDER ENV VARIABLES"
 }
+
+# Set cdomain file
+File.open("/etc/redborder/cdomain", "w") { |f| f.puts "#{cdomain}" }
 
 # Apply config preparation
 #system('systemctl stop chef-client &>/dev/null')
@@ -154,7 +158,7 @@ unless network.nil? # network will not be defined in cloud deployments
   #
   list_net_conf = Dir.entries("/etc/sysconfig/network-scripts/").select {|f| !File.directory? f}
   list_net_conf.each do |netconf|
-    next unless netconf.start_with?"ifcfg-b" # We only need the bridges        
+    next unless netconf.start_with?"ifcfg-b" # We only need the bridges
     bridge = netconf.gsub("ifcfg-","")
 
     # If the bridge is not in the yaml file of the init_conf
@@ -176,7 +180,7 @@ unless network.nil? # network will not be defined in cloud deployments
       end
     end
   end
-  
+
   #
   # Remove bridges and delete related files
   #
@@ -191,9 +195,9 @@ unless network.nil? # network will not be defined in cloud deployments
     # TODO: Check if with checking that start with b is enough to know if is a bridge
     if iface.start_with?"b"
       puts "Deleting dev bridge #{iface}"
-      system("ip link del #{iface}") 
+      system("ip link del #{iface}")
     end
-    
+
     # Remove the files from /etc/sysconfig/network-scripts directory
     File.delete(iface_path_file) if File.exist?(iface_path_file)
   end
@@ -238,7 +242,7 @@ unless network.nil? # network will not be defined in cloud deployments
     end
   end
 
-  # Configure NETWORK 
+  # Configure NETWORK
   network['interfaces'].each do |iface|
     dev = iface['device']
     iface_mode = iface['mode']
@@ -311,7 +315,7 @@ system("timedatectl set-timezone UTC")
 if !network.nil? #Firewall rules are not needed in cloud environments
 
   # Add rules here
-  
+
   # Reload firewalld configuration
   #system("firewall-cmd --reload &>/dev/null")
 
@@ -332,7 +336,7 @@ if opt["r"]
   if registration_mode == "proxy"
     if Config_utils.check_cloud_address(cloud_address)
       IPSOPTS="-t ips -i -d -f"
-      system("/usr/lib/redborder/bin/rb_register_url.sh -u #{cloud_address} #{IPSOPTS}")
+      system("/usr/lib/redborder/bin/rb_register_url.sh -u #{cloud_address} -c #{cdomain} #{IPSOPTS}")
     else
       p err_msg = "Invalid cloud address. Please review #{INITCONF} file"
       exit 1
@@ -341,14 +345,14 @@ if opt["r"]
     system("sudo hostnamectl set-hostname #{ips_node_name}")
     system("/usr/lib/redborder/scripts/rb_associate_sensor.rb -u #{webui_user} -p #{webui_pass} -i #{Config_utils.get_ip_address} -m #{webui_host}")
     if $?.exitstatus == 0
-      Config_utils.hook_hosts webui_host
+      Config_utils.hook_hosts(webui_host, cdomain)
       Config_utils.replace_chef_server_url
       Config_utils.ensure_log_file_exists
       system("sed -i '/webui_pass/d' #{INITCONF}")
       puts "Sensor registered to the manager, please wait..."
       puts "You can see logs in /var/log/rb-register-common/register.log"
       system('/usr/lib/redborder/bin/rb_register_finish.sh > /var/log/rb-register-common/register.log 2>&1')
-      puts "Registration and configuration finished!" 
+      puts "Registration and configuration finished!"
     else
       puts "Error: rb_associate_sensor.rb failed with exit status #{$?.exitstatus}. Please review #{INITCONF} file or network configuration..."
     end

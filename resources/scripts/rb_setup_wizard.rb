@@ -353,6 +353,7 @@ if make_registration
         cloud_address_conf.doit # launch wizard
         cancel_wizard if cloud_address_conf.cancel
         general_conf["cloud_address"] = cloud_address_conf.conf[:cloud_address]
+        general_conf["cdomain"] = cloud_address_conf.conf[:cdomain]
     else
         ###############################
         #      SSH CONFIGURATION      #
@@ -366,6 +367,7 @@ if make_registration
         general_conf["webui_user"] = init_conf_webui_address_conf.conf[:user]
         general_conf["webui_pass"] = init_conf_webui_address_conf.conf[:pass]
         general_conf["ips_node_name"] = init_conf_webui_address_conf.conf[:node_name]
+        general_conf["cdomain"] = init_conf_webui_address_conf.conf[:cdomain]
     end
 end
 
@@ -435,6 +437,7 @@ elsif make_registration
     text += "    Pass : #{'*' * general_conf['webui_pass'].length}\n"
     text += "    Sensor Name: #{general_conf['ips_node_name']}\n"
 end
+text += "\n- Cloud Domain: #{general_conf['cdomain']}\n"
 
 text += "\nPlease, is this configuration ok?\n \n"
 
