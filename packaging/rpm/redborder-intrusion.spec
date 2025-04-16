@@ -87,8 +87,8 @@ fi
 %doc
 
 %changelog
-* Fri Mar 28 2025 Vicente Mesa, José Navarro <vimesa@redborder.com, jnavarro@redborder.com> - 1.0.0-1
+* Fri Mar 28 2025 Vicente Mesa, José Navarro <vimesa@redborder.com, jnavarro@redborder.com> -
 - Chef-workstation update handling conflict with embedded openssl gemspec
 
-* Mon Mar 21 2021 Miguel Negron <manegron@redborder.com> - 0.0.1-1
+* Mon Oct 7 2024 Miguel Álvarez <malvarez@redborder.com> - 0.0.1-1
 - first spec version
