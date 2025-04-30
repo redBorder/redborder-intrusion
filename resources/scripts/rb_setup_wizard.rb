@@ -152,6 +152,8 @@ EOF
     dialog.title = "Applying configuration"
     dialog.prgbox(command,20,100, "Executing rb_rename_network_interfaces")
     system("reboot")
+  else
+    cancel_wizard
   end
 
 end
@@ -219,29 +221,24 @@ end
 ##############################
 # INTERFACES  CONFIGURATION  #
 ##############################
-if general_conf["network"]["interfaces"].size > 1
-    static_interface = general_conf["network"]["interfaces"].find { |i| i["mode"] == "static" }
-    dhcp_interfaces = general_conf["network"]["interfaces"].select { |i| i["mode"] == "dhcp" }
+management_iface = nil
 
-    if static_interface && dhcp_interfaces.size >= 1
-        general_conf["network"]["management_interface"] = static_interface["device"]
-    else
-        interface_options = general_conf["network"]["interfaces"].map { |i| [i["device"]] }
-        text = <<EOF
+if general_conf["network"]["interfaces"].size > 0
+    interface_options = general_conf["network"]["interfaces"].map { |i| [i["device"]] }
+    text = <<EOF
 You have multiple network interfaces configured.
 Please select one to be used as the management interface.
 EOF
-        dialog = MRDialog.new
-        dialog.clear = true
-        dialog.title = "Select Management Interface"
-        management_iface = dialog.menu(text, interface_options, 10, 50)
+    dialog = MRDialog.new
+    dialog.clear = true
+    dialog.title = "Select Management Interface"
+    management_iface = dialog.menu(text, interface_options, 10, 50)
+end
 
-        if management_iface.nil? || management_iface.empty?
-            cancel_wizard
-        else
-            general_conf["network"]["management_interface"] = management_iface
-        end
-    end
+if management_iface.nil?
+  cancel_wizard
+else
+  general_conf["network"]["management_interface"] = management_iface
 end
 
 ##########################
@@ -398,8 +395,13 @@ unless general_conf["network"]["interfaces"].empty?
     end
 end
 
+unless general_conf["network"]["management_interface"].nil?
+    text += "- Management Interface:\n"
+    text += "    #{general_conf["network"]["management_interface"]}\n"
+end
+
 unless general_conf["network"]["dns"].nil? or general_conf["network"]["dns"].empty?
-    text += "- DNS:\n"
+    text += "\n- DNS:\n"
     general_conf["network"]["dns"].each do |dns|
         text += "    #{dns}\n"
     end
@@ -429,7 +431,6 @@ if registration_mode == "proxy" and make_registration
     general_conf.delete('webui_user')
     general_conf.delete('webui_pass')
     general_conf.delete('ips_node_name')
-
 elsif make_registration
     general_conf.delete('cloud_address')
     text += "    Host : #{general_conf['webui_host']}\n"
