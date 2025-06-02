@@ -17,7 +17,7 @@
 
 function usage() {
   echo "USAGE:   $0 path_snort.conf|instancegroupid"
-  echo "example: $0 /etc/snort/0/snort.conf"
+  echo "example: $0 /etc/snort/0_default_0/snort.lua"
   echo "example: $0 0"
   echo "example: $0 1"
   exit 0
@@ -70,36 +70,29 @@ function e_fail() {
 }
 
 function get_random_group(){
-  RAND=$(($RANDOM %1000))
-   
-  while : ;do
-    grep -q "INSTANCES_GROUP=\"$RAND\"" /etc/sysconfig/snort-*
-    if [ $? -ne 0 ]; then
-      break
-    else
-      RAND=$(($RANDOM %1000))
-    fi
-  done
+  RAND=$(($RANDOM %1000))   
 }
 
 ret=0
 dir="/tmp/rb_verify_snort$$"
 
 for conf in $*; do
-  [ ! -f $conf ] && conf=/etc/snort/$conf/snort.conf
+  [ ! -f $conf ] && conf=/etc/snort/$conf/config.lua
   if [ -f $conf ]; then
     echo "Checking $conf: "
     get_random_group
+    rules="$(dirname "$conf")/snort.rules"
     rm -rf $dir
     mkdir -p $dir
       if [ $ret -eq 0 ]; then
         echo -n "  - checking Snort configuration (span mode)   "
-        nice -n 19 ionice -c2 -n7 env INSTANCES_GROUP=$RAND /usr/sbin/snort -T -c $conf -l $dir --perfmon-file $dir/snort.stats -G 0 &>$dir/snort-out.log 
+        echo $rules
+	nice -n 19 ionice -c2 -n7 env INSTANCES_GROUP=$RAND /usr/sbin/snort -T -c $conf -R $rules -l $dir -G 0 &>$dir/snort-out.log 
         ret=$?
         if [ $ret -eq 0 ]; then
           e_ok
           echo -n "  - checking Snort configuration (inline mode) "
-          nice -n 19 ionice -c2 -n7 env INSTANCES_GROUP=$RAND /usr/sbin/snort -T -c $conf -l $dir --perfmon-file $dir/snort.stats -Q -G 0 &>$dir/snort-out.log
+          nice -n 19 ionice -c2 -n7 env INSTANCES_GROUP=$RAND /usr/sbin/snort -T -c $conf -R $rules -l $dir -Q -G 0 &>$dir/snort-out.log
           ret=$?
           if [ $ret -eq 0 ]; then
             e_ok
@@ -122,4 +115,3 @@ for conf in $*; do
 done
 
 exit $ret
-
