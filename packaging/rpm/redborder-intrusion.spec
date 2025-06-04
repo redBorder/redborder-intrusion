@@ -37,7 +37,7 @@ install -D -m 0644 resources/dialogrc %{buildroot}/etc/redborder
 cp resources/bin/* %{buildroot}/usr/lib/redborder/bin
 cp resources/scripts/* %{buildroot}/usr/lib/redborder/scripts
 cp -r resources/etc/chef %{buildroot}/etc/
-cp -r resources/etc/rc.d/init.d %{buildroot}/etc/
+cp -r resources/etc/rc.d/init.d/* %{buildroot}/etc/rc.d/init.d/
 cp resources/etc/rb_sysconf.conf.default %{buildroot}/etc/
 chmod 0755 %{buildroot}/usr/lib/redborder/bin/*
 chmod 0755 %{buildroot}/usr/lib/redborder/scripts/*
