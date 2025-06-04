@@ -31,17 +31,17 @@ mkdir -p %{buildroot}/usr/lib/redborder/lib
 mkdir -p %{buildroot}/etc/profile.d
 mkdir -p %{buildroot}/var/chef/cookbooks
 mkdir -p %{buildroot}/etc/chef/
-mkdir -p %{buildroot}/etc/init.d/
+mkdir -p %{buildroot}/etc/rc.d/init.d/
 install -D -m 0644 resources/redborder-intrusion.sh %{buildroot}/etc/profile.d
 install -D -m 0644 resources/dialogrc %{buildroot}/etc/redborder
 cp resources/bin/* %{buildroot}/usr/lib/redborder/bin
 cp resources/scripts/* %{buildroot}/usr/lib/redborder/scripts
 cp -r resources/etc/chef %{buildroot}/etc/
-cp -r resources/etc/init.d %{buildroot}/etc/
+cp -r resources/etc/rc.d/init.d %{buildroot}/etc/
 cp resources/etc/rb_sysconf.conf.default %{buildroot}/etc/
 chmod 0755 %{buildroot}/usr/lib/redborder/bin/*
 chmod 0755 %{buildroot}/usr/lib/redborder/scripts/*
-chmod 0755 %{buildroot}/etc/init.d/snort3
+chmod 0755 %{buildroot}/etc/rc.d/init.d/snort3
 install -D -m 0644 resources/lib/rb_wiz_lib.rb %{buildroot}/usr/lib/redborder/lib
 install -D -m 0644 resources/lib/wiz_conf.rb %{buildroot}/usr/lib/redborder/lib
 install -D -m 0644 resources/lib/wizard_helper.rb %{buildroot}/usr/lib/redborder/lib
@@ -68,11 +68,11 @@ echo "kernel.printk = 1 4 1 7" > /usr/lib/sysctl.d/99-redborder-printk.conf
 /usr/lib/redborder/scripts
 %defattr(0755,root,root)
 /etc/profile.d/redborder-intrusion.sh
-/etc/init.d/snort3
+/etc/rc.d/init.d/snort3
 /usr/lib/redborder/lib/dhclient-enter-hooks
 %defattr(0644,root,root)
 /etc/chef/
-/etc/init.d/
+/etc/rc.d/init.d/
 /etc/rb_sysconf.conf.default
 /etc/redborder
 /usr/lib/redborder/lib/rb_wiz_lib.rb
