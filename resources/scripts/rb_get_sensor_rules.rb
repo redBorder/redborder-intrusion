@@ -173,7 +173,7 @@ ARGV.each do |a|
 end
 print "\n"
 
-opt = Getopt::Std.getopts("hg:b:d:srfw")
+opt = Getopt::Std.getopts("hg:b:i:d:n:srfw")
 if opt["h"] or opt["g"].nil? 
   printf "rb_get_sensor_rules.rb [-h] [-f] -g group_id -b binding_id -d dbversion_id\n"
   printf "    -h                -> print this help\n"
@@ -187,6 +187,8 @@ if opt["h"] or opt["g"].nil?
 end
 
 @group_id      = opt["g"]
+@real_group_id = opt["i"]
+@real_sensor_id = opt["n"]
 savecmd        = !opt["s"].nil?
 reputation     = !opt["r"].nil?
 rollback       = opt["w"].nil?
@@ -240,7 +242,7 @@ def get_rules(remote_name, snortrules, binding_id)
 
   File.delete(snortrulestmp) if File.exist?(snortrulestmp)
 
-  result = @chef.get_request("/sensors/#{@client_id}/#{remote_name}?group_id=#{@group_id}&binding_id=#{binding_id}")
+  result = @chef.get_request("/sensors/#{@real_sensor_id}/#{remote_name}?group_id=#{@real_group_id}&binding_id=#{binding_id}")
   if result
     File.open(snortrulestmp, 'w') {|f| f.write(result)}
 
@@ -303,7 +305,7 @@ def get_classifications
 
   File.delete "#{@v_classifications}.tmp" if File.exist?("#{@v_classifications}.tmp")
 
-  result = @chef.get_request("/sensors/#{@client_id}/classifications.txt?group_id=#{@group_id}")
+  result = @chef.get_request("/sensors/#{@real_sensor_id}/classifications.txt?group_id=#{@real_group_id}")
 
   if result
     File.open("#{@v_classifications}.tmp", 'w') {|f| f.write(result)}
@@ -327,7 +329,7 @@ def get_classifications
 end
 
 def get_rule_db_version_ids
-  @chef.get_request("/sensors/#{@client_id}/get_rule_db_version_ids?group_id=#{@group_id}")
+  @chef.get_request("/sensors/#{@client_id}/get_rule_db_version_ids?group_id=#{@real_group_id}")
 end
 
 
@@ -337,7 +339,7 @@ def get_iplist_files
 
   File.delete "#{@v_iplist}.tmp" if File.exist?("#{@v_iplist}.tmp")
 
-  result = @chef.get_request("/sensors/#{@client_id}/iplist.txt?group_id=#{@group_id}")
+  result = @chef.get_request("/sensors/#{@client_id}/iplist.txt?group_id=#{@real_group_id}")
 
   if result
     FileUtils.mkdir_p @v_iplist_dir
@@ -374,13 +376,43 @@ def get_iplist_files
 
 end
 
+def get_classifications
+  print "Downloading classifications "
+  print_length = "Downloading classifications ".length
+
+  File.delete "#{@v_classifications}.tmp" if File.exist?("#{@v_classifications}.tmp")
+
+  result = @chef.get_request("/sensors/#{@client_id}/classifications.txt?group_id=#{@group_id}")
+
+  if result
+    File.open("#{@v_classifications}.tmp", 'w') {|f| f.write(result)}
+    v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_classifications}.tmp"))
+    v_md5sum        = File.exists?(@v_classifications) ? Digest::MD5.hexdigest(File.read(@v_classifications)) : ""
+
+    if v_md5sum != v_md5sum_tmp
+      File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
+    else
+      print "(not modified) "
+      print_length += "(not modified) ".length
+      File.delete("#{@v_classifications}.tmp") if File.exist?("#{@v_classifications}.tmp")
+    end
+
+    print_ok(print_length)
+    return true
+  else
+    print_fail(print_length)
+    return false
+  end
+end
+
+
 def get_geoip_files
   print "Downloading geoip files "
   print_length = "Downloading geoip files ".length
 
   File.delete "#{@v_geoip}.tmp" if File.exist?("#{@v_geoip}.tmp")
 
-  result = @chef.get_request("/sensors/#{@client_id}/geoip.txt?group_id=#{@group_id}")
+  result = @chef.get_request("/sensors/#{@client_id}/geoip.txt?group_id=#{@real_group_id}")
 
   if result
     FileUtils.mkdir_p @v_geoip_dir
@@ -439,8 +471,6 @@ end
 BACKUPCOUNT             = 5
 backups = []
 
-
-puts @v_group_dir
 if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
   datestr = Time.now.strftime("%Y%m%d%H%M%S")
   
@@ -479,6 +509,8 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
     else
       @v_rulefilename         = "snort.rules"
       @v_rulefile             = "/etc/snort/#{@group_id}/#{@v_rulefilename}"
+      @v_classificationsname  = "classification.config"
+      @v_classifications      = "/etc/snort/#{@group_id}/#{@v_classificationsname}"
       @v_prepfilename         = "preprocessor.rules"
       @v_cmdfile              = "/etc/snort/#{@group_id}/rb_get_sensor_rules.sh"
       @v_snortversion         = `/usr/sbin/snort --version 2>&1|grep Version|sed 's/.*Version //'|awk '{print $1}'`.chomp
@@ -487,14 +519,16 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
       FileUtils.mkdir_p @v_backup_dir
   
       get_rules("active_rules.txt", @v_rulefile, binding_id)
-  
+      get_classifications
       if @reload_snort == 1 or @restart_snort == 1
         datestr = Time.now.strftime("%Y%m%d%H%M%S")
         copy_backup(@v_backup_dir, datestr, "#{@v_rulefile}.tmp"        , @v_rulefile       , @v_rulefilename, backups )
+        copy_backup(@v_backup_dir, datestr, "#{@v_classifications}.tmp" , @v_classifications, @v_classificationsname, backups )
       end
 
       File.delete "#{@v_rulefile}.tmp" if File.exist?("#{@v_rulefile}.tmp")
-      
+      File.delete "#{@v_classifications}.tmp" if File.exist?("#{@v_classifications}.tmp")
+
       if savecmd and @group_id and !binding_id.nil? and !dbversion_ids.nil? and !dbversion_ids.empty?
         begin
           file = File.open(@v_cmdfile, "w")
@@ -510,14 +544,20 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
   end
 
   if @reload_snort == 1 or @restart_snort == 1
-    #before doing anything we need to check if it is correct
+    output = `/usr/lib/redborder/scripts/rb_remap_intrusion_rules.rb --no-color #{@v_classifications} #{@v_rulefile}`
+    print output
+    #before doing anything we need to check if it is correc
     if system("/bin/env BOOTUP=none /usr/lib/redborder/bin/rb_verify_snort.sh #{@group_id}")
       if savecmd
         system("systemctl reload snort3@#{@group_id}") if @reload_snort == 1
+        print "Reloading snort #{@group_id}" if @reload_snort == 1
         system("systemctl restart snort3@#{@group_id}") if @restart_snort == 1
+        print "Restarting snort #{@group_id}" if @restart_snort == 1
       else
         system("systemctl reload snort3@#{@group_id}") if @reload_snort == 1
+        print "Reloading snort #{@group_id}" if @reload_snort == 1
         system("systemctl restart snort3@#{@group_id}") if @restart_snort == 1
+        print "Restarting snort #{@group_id}" if @restart_snort == 1
       end
       if @reload_snort_ips == 1
         sleep 15 
