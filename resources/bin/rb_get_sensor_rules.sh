@@ -16,28 +16,26 @@
 source /etc/profile.d/rvm.sh
 source /etc/profile.d/redborder*
 
-PID=$(ps aux |grep /usr/lib/redborder/bin/rb_get_sensor_rules.rb |grep -v grep | grep -v vim | awk '{print $2}')
+PID=$(ps aux | grep /usr/lib/redborder/bin/rb_get_sensor_rules.rb | grep -v grep | grep -v vim | awk '{print $2}')
 
 if [ "x$PID" == "x" ]; then
   if [ "x$*" == "x" ]; then
     pushd /etc/snort &>/dev/null
     counter=0
-    for g in $(ls * -d 2>/dev/null | sort -n); do
-      for n in $(ls -d /etc/snort/$g/snort-binding-* 2>/dev/null | sort); do
-        file="${n}/rb_get_sensor_rules.sh"
-        [ $counter -ne 0 ] && echo "--"
-        if [ -f $file ]; then
-          /bin/env BOOTUP=none bash $file
-        else
-          echo "$(dirname $file) has never been compiled!!"
-        fi
-        counter=$(( $counter + 1 ))
-      done
+    for d in $(find . -maxdepth 1 -type d ! -path . | sort); do
+      file="${d}/rb_get_sensor_rules.sh"
+      [ $counter -ne 0 ] && echo "--"
+      if [ -f "$file" ]; then
+        /bin/env BOOTUP=none bash "$file"
+      else
+        echo "$(dirname "$file") has never been compiled!!"
+      fi
+      counter=$((counter + 1))
     done
     popd &>/dev/null
   else
-    /usr/lib/redborder/bin/rb_get_sensor_rules $*
+    /usr/lib/redborder/bin/rb_get_sensor_rules "$@"
   fi
 else
-  echo "There is other instance running ($PID). Exiting!"
+  echo "There is already an instance of rb_get_sensor_rules.rb running with PID $PID"
 fi
