@@ -1,0 +1,32 @@
+#!/bin/bash
+#
+# snort3-dashboard       Custom SNORT3 status dashboard
+#
+# chkconfig: 2345 95 05
+# description: Displays a colorized SNORT3 group‐status dashboard when "status" is invoked.
+#
+
+export LANG="en_US.UTF-8"
+export LC_ALL="en_US.UTF-8"
+RUBY_SCRIPT="/usr/lib/redborder/scripts/rb_check_snort.rb"
+
+case "$1" in
+  status)
+    if [ -x "$RUBY_SCRIPT" ]; then
+      /usr/bin/env ruby "$RUBY_SCRIPT"
+      exit $?
+    else
+      echo "ERROR: Cannot find or execute $RUBY_SCRIPT"
+      exit 1
+    fi
+    ;;
+  start|stop|restart|reload)
+    echo "Use the native 'snort3@<group>' units to start/stop individual groups."
+    echo "For example:   service snort3@0_default_0 start"
+    exit 0
+    ;;
+  *)
+    echo "Usage: $0 {status}"
+    exit 2
+    ;;
+esac
