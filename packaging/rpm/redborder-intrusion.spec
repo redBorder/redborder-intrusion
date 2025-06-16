@@ -32,7 +32,7 @@ mkdir -p %{buildroot}/etc/profile.d
 mkdir -p %{buildroot}/var/chef/cookbooks
 mkdir -p %{buildroot}/etc/chef/
 mkdir -p %{buildroot}/etc/rc.d/init.d/
-mkdir -p %{buildroot}/etc/mac_vendors/
+mkdir -p %{buildroot}/etc/macvendors/
 install -D -m 0644 resources/redborder-intrusion.sh %{buildroot}/etc/profile.d
 install -D -m 0644 resources/dialogrc %{buildroot}/etc/redborder
 cp resources/bin/* %{buildroot}/usr/lib/redborder/bin
