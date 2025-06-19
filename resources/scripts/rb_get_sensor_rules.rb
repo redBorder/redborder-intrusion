@@ -200,7 +200,8 @@ elsif !opt["b"].nil?
   binding_ids << opt["b"]
 end
 
-@weburl = "webui.service"
+cdomain = File.read('/etc/redborder/cdomain').strip rescue 'redborder.cluster'
+@weburl = "webui.#{cdomain}"
 @client_name = File.read('/etc/chef/nodename').strip
 @client_id   = @client_name.split('-').last
 
