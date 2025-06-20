@@ -164,7 +164,7 @@ class ChefAPI
 end
 
 ret=0
-cdomain = File.read('/etc/redborder/cdomain').strip
+cdomain = File.read('/etc/redborder/cdomain').strip rescue 'redborder.cluster'
 @weburl = "webui.#{cdomain}"
 
 def usage
