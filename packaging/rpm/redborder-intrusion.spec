@@ -72,6 +72,7 @@ echo "kernel.printk = 1 4 1 7" > /usr/lib/sysctl.d/99-redborder-printk.conf
 /usr/lib/redborder/lib/dhclient-enter-hooks
 %defattr(0644,root,root)
 /etc/chef/
+/etc/rc.d/init.d/
 /etc/rb_sysconf.conf.default
 /etc/redborder
 /usr/lib/redborder/lib/rb_wiz_lib.rb
