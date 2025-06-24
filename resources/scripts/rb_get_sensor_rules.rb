@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 #######################################################################
-## Copyright (c) 2025 ENEO Tecnología S.L.
+## Copyright (c) 2014 ENEO Tecnología S.L.
 ## This file is part of redBorder.
 ## redBorder is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU Affero General Public License License as published by
@@ -332,6 +332,35 @@ def get_rule_db_version_ids
   @chef.get_request("/sensors/#{@client_id}/get_rule_db_version_ids?group_id=#{@real_group_id}")
 end
 
+def get_thresholds(binding_id)
+  print "Downloading thresholds "
+  print_length = "Downloading thresholds ".length
+
+  File.delete "#{@v_threshold}.tmp" if File.exist?("#{@v_threshold}.tmp")
+
+  result = @chef.get_request("/sensors/#{@real_sensor_id}/thresholds.txt?group_id=#{@real_group_id}&binding_id=#{binding_id}")
+
+  if result
+    File.open("#{@v_threshold}.tmp", 'w') {|f| f.write(result)}
+    v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_threshold}.tmp"))
+    v_md5sum        = File.exists?(@v_threshold) ? Digest::MD5.hexdigest(File.read(@v_threshold)) : ""
+
+    if v_md5sum != v_md5sum_tmp
+      File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
+    else
+      print "(not modified) "
+      print_length += "(not modified) ".length
+      File.delete("#{@v_threshold}.tmp") if File.exist?("#{@v_threshold}.tmp")
+    end
+
+    print_ok(print_length)
+    return true
+  else
+    print_fail(print_length)
+    return false
+  end
+
+end
 
 def get_iplist_files
   print "Downloading iplist files "
@@ -511,6 +540,8 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
       @v_rulefile             = "/etc/snort/#{@group_id}/#{@v_rulefilename}"
       @v_classificationsname  = "classification.config"
       @v_classifications      = "/etc/snort/#{@group_id}/#{@v_classificationsname}"
+      @v_thresholdname        = "events.lua"
+      @v_threshold            = "/etc/snort/#{@group_id}/#{@v_thresholdname}"
       @v_prepfilename         = "preprocessor.rules"
       @v_cmdfile              = "/etc/snort/#{@group_id}/rb_get_sensor_rules.sh"
       @v_snortversion         = `/usr/sbin/snort --version 2>&1|grep Version|sed 's/.*Version //'|awk '{print $1}'`.chomp
@@ -520,15 +551,18 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
   
       get_rules("active_rules.txt", @v_rulefile, binding_id)
       get_classifications
+      get_thresholds(binding_id)
+
       if @reload_snort == 1 or @restart_snort == 1
         datestr = Time.now.strftime("%Y%m%d%H%M%S")
         copy_backup(@v_backup_dir, datestr, "#{@v_rulefile}.tmp"        , @v_rulefile       , @v_rulefilename, backups )
         copy_backup(@v_backup_dir, datestr, "#{@v_classifications}.tmp" , @v_classifications, @v_classificationsname, backups )
+        copy_backup(@v_backup_dir, datestr, "#{@v_threshold}.tmp"       , @v_threshold      , @v_thresholdname, backups )
       end
 
       File.delete "#{@v_rulefile}.tmp" if File.exist?("#{@v_rulefile}.tmp")
       File.delete "#{@v_classifications}.tmp" if File.exist?("#{@v_classifications}.tmp")
-
+      File.delete "#{@v_threshold}.tmp" if File.exist?("#{@v_threshold}.tmp")
       if savecmd and @group_id and !binding_id.nil? and !dbversion_ids.nil? and !dbversion_ids.empty?
         begin
           file = File.open(@v_cmdfile, "w")
