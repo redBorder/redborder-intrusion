@@ -581,13 +581,6 @@ module Config_utils
     !(interface =~ old_pattern)
   end
 
-  def self.need_to_rename_network_interfaces?
-    interfaces = get_network_interfaces
-    modern_interfaces = interfaces.select { |interface| modern_interface?(interface) }
-
-    modern_interfaces.any?
-  end
-
 end
 
 ## vim:ts=4:sw=4:expandtab:ai:nowrap:formatoptions=croqln:
