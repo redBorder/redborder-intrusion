@@ -75,7 +75,6 @@ echo "kernel.printk = 1 4 1 7" > /usr/lib/sysctl.d/99-redborder-printk.conf
 /usr/lib/redborder/lib/dhclient-enter-hooks
 %defattr(0644,root,root)
 /etc/chef/
-/etc/rc.d/init.d/
 /etc/macvendors/mac_vendors
 /etc/rb_sysconf.conf.default
 /etc/redborder

@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 #######################################################################
-## Copyright (c) 2014 ENEO Tecnología S.L.
+## Copyright (c) 2025 ENEO Tecnología S.L.
 ## This file is part of redBorder.
 ## redBorder is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU Affero General Public License License as published by
@@ -200,7 +200,8 @@ elsif !opt["b"].nil?
   binding_ids << opt["b"]
 end
 
-@weburl = "webui.service"
+cdomain = File.read('/etc/redborder/cdomain').strip rescue 'redborder.cluster'
+@weburl = "webui.#{cdomain}"
 @client_name = File.read('/etc/chef/nodename').strip
 @client_id   = @client_name.split('-').last
 
