@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 
 #######################################################################
-## Copyright (c) 2014 ENEO Tecnología S.L.
+## Copyright (c) 2025 ENEO Tecnología S.L.
 ## This file is part of redBorder.
 ## redBorder is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU Affero General Public License License as published by
@@ -211,7 +211,7 @@ cdomain = File.read('/etc/redborder/cdomain').strip rescue 'redborder.cluster'
 @v_iplist               = "#{@v_iplist_dir}/#{@v_iplistname}"
 @v_iplist_zone          = "#{@v_iplist_dir}/zone.info"
 @v_geoip_dir            = "/etc/snort/#{@group_id}/geoips"
-@v_geoipname            = "geoip_script.sh"
+@v_geoipname            = "rbgeoip"
 @v_geoip                = "#{@v_geoip_dir}/#{@v_geoipname}"
 @v_unicode_mapname      = "unicode.map"
 @v_unicode_map          = "/etc/snort/#{@group_id}/#{@v_unicode_mapname}"
@@ -340,7 +340,7 @@ def get_iplist_files
 
   File.delete "#{@v_iplist}.tmp" if File.exist?("#{@v_iplist}.tmp")
 
-  result = @chef.get_request("/sensors/#{@client_id}/iplist.txt?group_id=#{@real_group_id}")
+  result = @chef.get_request("/sensors/#{@real_sensor_id}/iplist_v4.txt?group_id=#{@real_group_id}")
 
   if result
     FileUtils.mkdir_p @v_iplist_dir
@@ -413,7 +413,7 @@ def get_geoip_files
 
   File.delete "#{@v_geoip}.tmp" if File.exist?("#{@v_geoip}.tmp")
 
-  result = @chef.get_request("/sensors/#{@client_id}/geoip.txt?group_id=#{@real_group_id}")
+  result = @chef.get_request("/sensors/#{@real_sensor_id}/geoip_v4.txt?group_id=#{@real_group_id}")
 
   if result
     FileUtils.mkdir_p @v_geoip_dir
