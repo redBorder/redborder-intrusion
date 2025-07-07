@@ -1,14 +1,84 @@
 #!/bin/bash
 #
-# snort3-dashboard       Custom SNORT3 status dashboard
+# redBorder snort3-dashboard       Custom snort3 status dashboard
 #
 # chkconfig: 2345 95 05
-# description: Displays a colorized SNORT3 group‐status dashboard when "status" is invoked.
+# description: redBorder snort3 instance status and control dashboard
 #
 
 export LANG="en_US.UTF-8"
 export LC_ALL="en_US.UTF-8"
+
 RUBY_SCRIPT="/usr/lib/redborder/scripts/rb_check_snort.rb"
+SNORT_UNIT_PREFIX="snort3@"
+SNORT_CONF_DIR="/etc/snort"
+SLEEP_INTERVAL=1
+
+GREEN='\033[38;2;0;255;0m'
+RED='\033[38;2;255;0;0m'
+NC='\033[0m'
+
+get_snort_groups() {
+  find "$SNORT_CONF_DIR" -maxdepth 1 -mindepth 1 -type d -printf "%f\n" \
+    | grep -E '^[0-9]+_[^_]+_[0-9]+$' \
+    | sort
+}
+
+parse_group() {
+  IFS='_' read -r group_id group_name binding_id <<<"$1"
+}
+
+execute_action() {
+  local action=$1 group=$2
+  parse_group "$group"
+  printf "%s Group %s (%s), binding %s... " \
+    "${action^}" "$group_id" "$group_name" "$binding_id"
+  sleep "$SLEEP_INTERVAL"
+
+  if [ "$action" = "status" ]; then
+    /usr/lib/rvm/bin/rvm ruby-2.7.5@web do "$RUBY_SCRIPT" "$group" &>/dev/null
+    rc=$?
+  else
+    systemctl "$action" "${SNORT_UNIT_PREFIX}${group}" &>/dev/null
+    rc=$?
+  fi
+
+  if [ $rc -eq 0 ]; then
+    echo -e "[${GREEN}OK${NC}]"
+  else
+    echo -e "[${RED}FAIL${NC}]"
+  fi
+}
+
+run_for_all_groups() {
+  local action=$1
+  for group in $(get_snort_groups); do
+    execute_action "$action" "$group"
+  done
+}
+
+run_on_demand() {
+  local action=$1 group=$2
+
+  if [[ -z "$action" ]]; then
+    echo "Actions: start, stop, restart, reload, status"
+    printf "Enter action: "
+    read -r action
+  fi
+  [[ ! "$action" =~ ^(start|stop|restart|reload|status)$ ]] && \
+    { echo "ERROR: Invalid action '$action'"; exit 1; }
+
+  if [[ -z "$group" ]]; then
+    echo "Available SNORT3 groups:"
+    get_snort_groups
+    printf "Enter group (e.g. 1_dos_0): "
+    read -r group
+  fi
+  get_snort_groups | grep -qx "$group" || \
+    { echo "ERROR: Group '$group' not found"; exit 1; }
+
+  execute_action "$action" "$group"
+}
 
 case "$1" in
   status)
@@ -20,13 +90,23 @@ case "$1" in
       exit 1
     fi
     ;;
+  status_ascii)
+    if [ -x "$RUBY_SCRIPT" ]; then
+      /usr/bin/env ruby "$RUBY_SCRIPT" -s
+      exit $?
+    else
+      echo "ERROR: Cannot find or execute $RUBY_SCRIPT"
+      exit 1
+    fi
+    ;;
   start|stop|restart|reload)
-    echo "Use the native 'snort3@<group>' units to start/stop individual groups."
-    echo "For example:   service snort3@0_default_0 start"
-    exit 0
+    run_for_all_groups "$1"
+    ;;
+  on-demand)
+    run_on_demand "$2" "$3"
     ;;
   *)
-    echo "Usage: $0 {status}"
+    echo "Usage: $0 {status|start|stop|restart|reload|on-demand [action] [group]}"
     exit 2
     ;;
 esac
