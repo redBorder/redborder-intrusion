@@ -269,7 +269,7 @@ if options[:show_ascii]
   title += "     #{RED}JJJJJJJJJJJJJJJJJJJJJJJJ#{NC}                                                                                                     \n"
   title += "    #{RED}JJJJJKLMLKKJJJJJJJJJJJJJJJ#{NC}                                                                                                    \n"
   title += "  #{RED}JJJJJLW#{NC}#{WHITE}OOOOO#{NC}#{RED}YQJJJJJJJJJJJJJJJ                                    JJJJ#{NC}EBBB                                  BBBA                 #{NC}\n"
-  title += " #{RED}JJJJJLY#{NC}#{WHITE}OOOOOOO#{NC}#{RED}ZYOCDGJJJJJJJJJJJJ                                  JJJJ#{NC}JEBBB                                ABBBB                 \n"
+  title += " #{RED}JJJJJLY#{NC}#{WHITE}OOOOOOO#{NC}#{RED}ZYOCDGJJJJJJJJJJJJ                                  JJJJ#{NC}JEBB                                  BBBB                 \n"
   title += " #{RED}JJJJKN#{NC}#{WHITE}OOOOOOOO#{NC}#{BLACK}      #{NC}#{RED}EIJJJJJJJJJJ         JJJJJJJ  JJJJJJI    JJJJJJJJJ#{NC}EBBBBBBBBB    ABBBBBBA BBBBBBBA BBBBBBBBBA ABBBBBBA  BBBBBBBBB\n"
   title += "#{RED}JJJJJJKU#{NC}#{WHITE}OOOOOO#{NC}#{BLACK}        #{NC}#{RED}CHJJJJJJJJJ         JJJJJJJJJJ    JJIJJJJJJJJJJJJ#{NC}EBBBBBBBBBBB BBBBBBBBBBBBBBBBBBBBBBBBBBBBABBB     BBBBBBBBBABB\n"
   title += "#{RED}JJJJJJJKQ#{NC}#{WHITE}VX#{NC}ZZ#{NC}          #{NC}#{RED}EJJJJJJJJJJ        JJJJJ JJJJJJJJJJJJJJJ     JJJ#{NC}EBBBA    BBBBBBB    BBBBBBBA  BBB     BBBBBBBBBBBBBBBBBBBA  \n"
