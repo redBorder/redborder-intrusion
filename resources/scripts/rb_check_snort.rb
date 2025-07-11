@@ -41,94 +41,172 @@ def pad_ansi(str_with_ansi, target_width)
   end
 end
 
+def pick_one_iface(iface_str)
+  ifaces = iface_str.split(':').map(&:strip).reject(&:empty?)
+  ifaces.sample || iface_str
+end
+
+def get_segment_from_iface(iface)
+  ip_output, _err, _status = Open3.capture3("ip a")
+
+  ip_output.each_line do |line|
+    if line =~ /^\d+: #{Regexp.escape(iface)}:.*master (\S+)/
+      return $1.strip
+    elsif line =~ /^\d+: #{Regexp.escape(iface)}:/
+      return iface
+    end
+  end
+
+  iface
+end
+
 groups = Dir.entries(BASE_DIR).select do |ent|
   path = File.join(BASE_DIR, ent)
   File.directory?(path) && ent =~ /^\d+_.+$/
 end.sort
 
-rows = []
+groups_data = {}
 
 groups.each do |grp|
-  result = {
-    group: grp,
-    svc:      "DOWN",
-    rules:    "MISSING",
-    count:    "--",
-    pid:      "--",
-    mode:     "--",
-    inline:   "--",
-    cpu_cores:"--",
-    threads:  "--",
-    iface:    "--"
-  }
-
-  svc_name = "#{SNORT_SERVICE_PREFX}#{grp}"
-  out, _err, status = Open3.capture3("service #{svc_name} status")
-  if out =~ /Active:\s+active \(running\)/
-    result[:svc] = "UP"
-    if out =~ /Main PID:\s+(\d+)/
-      result[:pid] = $1
-    end
+  if grp =~ /^(\d+)_(.+)_(.+)$/
+    gid, gname, bindid = $1, $2, $3
+  else
+    gid, gname, bindid = grp, "", ""
   end
-
-  rules_file = File.join(BASE_DIR, grp, "snort.rules")
-  if File.exist?(rules_file) && File.size(rules_file) > 0
-    result[:rules] = "LOADED"
-    alert_lines = `grep -c '^alert' "#{rules_file}"`.strip
-    result[:count] = alert_lines.empty? ? "0" : alert_lines
-  end
-
-  env_file = File.join(BASE_DIR, grp, "env")
-  if File.exist?(env_file)
-    File.foreach(env_file) do |line|
-      line.strip!
-      next if line.empty? || line.start_with?("#")
-
-      case line
-      when /^MODE=(.+)$/
-        result[:mode] = $1.strip
-      when /^INLINE=(.+)$/
-        result[:inline] = $1.strip
-      when /^CPU_CORES=(.+)$/
-        result[:cpu_cores] = $1.strip
-      when /^THREADS=(.+)$/
-        result[:threads] = $1.strip
-      when /^IFACE=(.+)$/
-        result[:iface] = $1.strip
-      end
-    end
-  end
-
-  rows << result
+  groups_data[gid] ||= { group_name: gname, bindings: [] }
+  groups_data[gid][:bindings] << { binding_id: bindid, full_group: grp }
 end
 
-group_w     = "Group".length
-svc_w       = "Service".length
-rules_w     = "Rules".length
-count_w     = "Rule Count".length
-pid_w       = "PID".length
-mode_w      = "Mode".length
-inline_w    = "Inline".length
-cpu_cores_w = "CPU_CORES".length
-threads_w   = "Threads".length
-iface_w     = "IFACE".length
+results_by_group = {}
 
-rows.each do |h|
-  group_w     = [ group_w, h[:group].length ].max
-  disp_svc    = (h[:svc] == "UP" ? "#{CHECK} UP" : "#{CROSS} DOWN")
-  svc_w       = [ svc_w, visible_length(disp_svc) ].max
-  rules_w     = [ rules_w, visible_length(h[:rules]) ].max
-  count_w     = [ count_w, h[:count].length ].max
-  pid_w       = [ pid_w, h[:pid].length ].max
-  mode_w      = [ mode_w, h[:mode].length ].max
-  inline_w    = [ inline_w, h[:inline].length ].max
-  cpu_cores_w = [ cpu_cores_w, h[:cpu_cores].length ].max
-  threads_w   = [ threads_w, h[:threads].length ].max
-  iface_w     = [ iface_w, h[:iface].length ].max
+groups_data.each do |gid, info|
+  gname = info[:group_name]
+  results_by_group[gid] ||= { group_name: gname, bindings: {} }
+
+  info[:bindings].each do |bind|
+    grp = bind[:full_group]
+    bindid = bind[:binding_id]
+
+    result = {
+      svc:      "DOWN",
+      rules:    "MISSING",
+      count:    "--",
+      pid:      "--",
+      mode:     "--",
+      inline:   "--",
+      cpu_cores:"--",
+      threads:  "--",
+      iface:    "--",
+      bp_support: CROSS,
+      bp_enabled: CROSS
+    }
+
+    svc_name = "#{SNORT_SERVICE_PREFX}#{grp}"
+    out, _err, status = Open3.capture3("service #{svc_name} status")
+    if out =~ /Active:\s+active \(running\)/
+      result[:svc] = "UP"
+      if out =~ /Main PID:\s+(\d+)/
+        result[:pid] = $1
+      end
+    end
+
+    rules_file = File.join(BASE_DIR, grp, "snort.rules")
+    if File.exist?(rules_file) && File.size(rules_file) > 0
+      result[:rules] = "LOADED"
+      total_rules = `grep -v '^\s*$' "#{rules_file}" | grep -v '^\s*#' | wc -l`.strip
+      result[:count] = total_rules.empty? ? "0" : total_rules
+    end
+
+    env_file = File.join(BASE_DIR, grp, "env")
+    if File.exist?(env_file)
+      File.foreach(env_file) do |line|
+        line.strip!
+        next if line.empty? || line.start_with?("#")
+
+        case line
+        when /^MODE=(.+)$/
+          result[:mode] = $1.strip
+        when /^INLINE=(.+)$/
+          inline = $1.strip
+          if inline == "true"
+            result[:inline] = "#{GREEN}#{CHECK}#{NC}" 
+          else
+            result[:inline] = "#{RED}#{CROSS}#{NC}"
+          end
+        when /^CPU_CORES=(.+)$/
+          result[:cpu_cores] = $1.strip
+        when /^THREADS=(.+)$/
+          result[:threads] = $1.strip
+        when /^IFACE=(.+)$/
+          result[:iface] = $1.strip
+        end
+      end
+    end
+
+    selected_iface = pick_one_iface(result[:iface])
+    segment = get_segment_from_iface(selected_iface)
+    if segment && !segment.empty?
+      if segment.start_with?("bpbr")
+        result[:bp_support] = "#{GREEN}#{CHECK}#{NC}"
+        bypass_output, _err, _status = Open3.capture3("/usr/lib/redborder/bin/rb_bypass.sh -b #{segment} -g")
+        if bypass_output =~ /non-Bypass mode/i
+          result[:bp_enabled] = "#{YELLOW}non-bp! (Software Forward)#{NC}"
+        else
+          result[:bp_enabled] = "#{GREEN}bp #{CHECK} (Hardware Forward)#{NC}"
+        end
+      else
+        result[:bp_support] = "#{RED}#{CROSS}#{NC}"
+        result[:bp_enabled] = "#{YELLOW}non-bp! (Software Forward)#{NC}"
+      end
+    else
+      result[:bp_support] = "#{RED}#{CROSS}#{NC}"
+      result[:bp_enabled] = "#{YELLOW}non-bp! (Software Forward)#{NC}"
+    end
+
+    results_by_group[gid][:bindings][bindid] = result
+  end
+end
+
+group_id_w   = "Group ID".length
+group_name_w = "Group Name".length
+bind_id_w    = "Binding ID".length
+svc_w        = "Service".length
+rules_w      = "Rules".length
+count_w      = "Rule Count".length
+pid_w        = "PID".length
+mode_w       = "Mode".length
+inline_w     = "Inline".length
+cpu_cores_w  = "CPU_CORES".length
+threads_w    = "Threads".length
+iface_w      = "IFACE".length
+bp_support_w = "BP Support?".length
+bp_enabled_w = "BP Enabled?".length
+
+results_by_group.each do |gid, group_info|
+  group_id_w   = [group_id_w, gid.length].max
+  group_name_w = [group_name_w, group_info[:group_name].length].max
+
+  group_info[:bindings].each do |bindid, h|
+    bind_id_w    = [bind_id_w, bindid.length].max
+    svc_text     = (h[:svc] == "UP" ? "#{CHECK} UP" : "#{CROSS} DOWN")
+    svc_w        = [svc_w, visible_length(svc_text)].max
+    rules_w      = [rules_w, visible_length(h[:rules])].max
+    count_w      = [count_w, h[:count].length].max
+    pid_w        = [pid_w, h[:pid].length].max
+    mode_w       = [mode_w, h[:mode].length].max
+    inline_w     = [inline_w, visible_length(h[:inline])].max
+    cpu_cores_w  = [cpu_cores_w, h[:cpu_cores].length].max
+    threads_w    = [threads_w, h[:threads].length].max
+    iface_w      = [iface_w, h[:iface].length].max
+    bp_support_w = [bp_support_w, visible_length(h[:bp_support])].max
+    bp_enabled_w = [bp_enabled_w, visible_length(h[:bp_enabled])].max
+  end
 end
 
 header = []
-header << "Group".ljust(group_w)
+header << "Group ID".ljust(group_id_w)
+header << "Group Name".ljust(group_name_w)
+header << "Binding ID".ljust(bind_id_w)
 header << "Service".ljust(svc_w)
 header << "Rules".ljust(rules_w)
 header << "Rule Count".ljust(count_w)
@@ -138,6 +216,9 @@ header << "Inline".ljust(inline_w)
 header << "CPU_CORES".ljust(cpu_cores_w)
 header << "Threads".ljust(threads_w)
 header << "IFACE".ljust(iface_w)
+header << "BP Support?".ljust(bp_support_w)
+header << "BP Enabled?".ljust(bp_enabled_w)
+
 header_line = "║ #{header.join(" │ ")} ║"
 line_len    = visible_length(header_line)
 
@@ -156,38 +237,50 @@ puts "#{BLUE}#{separator}#{NC}"
 puts header_line
 puts separator
 
-rows.each do |h|
-  col_group = h[:group].ljust(group_w)
+results_by_group.each do |gid, group_info|
+  gname = group_info[:group_name]
+  first_binding = true
 
-  if h[:svc] == "UP"
-    raw_svc    = "#{CHECK} UP"
-    color_code = GREEN
-  else
-    raw_svc    = "#{CROSS} DOWN"
-    color_code = RED
+  group_info[:bindings].each do |bindid, h|
+    col_gid = first_binding ? gid.ljust(group_id_w) : " " * group_id_w
+    col_gname = first_binding ? gname.ljust(group_name_w) : " " * group_name_w
+    first_binding = false
+
+    bind_text = "├─ #{bindid}"
+    bind_text = bind_text.ljust(bind_id_w)
+
+    if h[:svc] == "UP"
+      raw_svc    = "#{CHECK} UP"
+      color_code = GREEN
+    else
+      raw_svc    = "#{CROSS} DOWN"
+      color_code = RED
+    end
+    colored_svc   = "#{color_code}#{raw_svc}#{NC}"
+    padded_svc    = pad_ansi(colored_svc, svc_w)
+
+    if h[:rules] == "LOADED"
+      raw_rules   = "LOADED"
+      color_rules = GREEN
+    else
+      raw_rules   = "MISSING"
+      color_rules = YELLOW
+    end
+    colored_rules = "#{color_rules}#{raw_rules}#{NC}"
+    padded_rules  = pad_ansi(colored_rules, rules_w)
+
+    padded_count     = h[:count].ljust(count_w)
+    padded_pid       = h[:pid].ljust(pid_w)
+    padded_mode      = h[:mode].ljust(mode_w)
+    padded_inline    = pad_ansi(h[:inline], inline_w)
+    padded_cpu_cores = h[:cpu_cores].ljust(cpu_cores_w)
+    padded_threads   = h[:threads].ljust(threads_w)
+    padded_iface     = h[:iface].ljust(iface_w)
+    padded_bp_support= pad_ansi(h[:bp_support], bp_support_w)
+    padded_bp_enabled= pad_ansi(h[:bp_enabled], bp_enabled_w)
+
+    puts "║ #{col_gid} │ #{col_gname} │ #{bind_text} │ #{padded_svc} │ #{padded_rules} │ #{padded_count} │ #{padded_pid} │ #{padded_mode} │ #{padded_inline} │ #{padded_cpu_cores} │ #{padded_threads} │ #{padded_iface} │ #{padded_bp_support} │ #{padded_bp_enabled} ║"
   end
-  colored_svc   = "#{color_code}#{raw_svc}#{NC}"
-  padded_svc    = pad_ansi(colored_svc, svc_w)
-
-  if h[:rules] == "LOADED"
-    raw_rules   = "LOADED"
-    color_rules = GREEN
-  else
-    raw_rules   = "MISSING"
-    color_rules = YELLOW
-  end
-  colored_rules = "#{color_rules}#{raw_rules}#{NC}"
-  padded_rules  = pad_ansi(colored_rules, rules_w)
-
-  padded_count    = h[:count].ljust(count_w)
-  padded_pid      = h[:pid].ljust(pid_w)
-  padded_mode     = h[:mode].ljust(mode_w)
-  padded_inline   = h[:inline].ljust(inline_w)
-  padded_cpu_cores= h[:cpu_cores].ljust(cpu_cores_w)
-  padded_threads  = h[:threads].ljust(threads_w)
-  padded_iface    = h[:iface].ljust(iface_w)
-
-  puts "║ #{col_group} │ #{padded_svc} │ #{padded_rules} │ #{padded_count} │ #{padded_pid} │ #{padded_mode} │ #{padded_inline} │ #{padded_cpu_cores} │ #{padded_threads} │ #{padded_iface} ║"
 end
 
 puts "#{BLUE}#{bottom_border}#{NC}"
