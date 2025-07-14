@@ -206,6 +206,7 @@ cdomain = File.read('/etc/redborder/cdomain').strip rescue 'redborder.cluster'
 @client_id   = @client_name.split('-').last
 
 @v_group_dir            = "/etc/snort/#{@group_id}"
+@v_snortml_dir          = "/etc/snort/#{@group_id}/ml_models"
 @v_iplist_dir           = "/etc/snort/#{@group_id}/iplists"
 @v_iplistname           = "iplist_script.sh"
 @v_iplist               = "#{@v_iplist_dir}/#{@v_iplistname}"
@@ -215,6 +216,7 @@ cdomain = File.read('/etc/redborder/cdomain').strip rescue 'redborder.cluster'
 @v_geoip                = "#{@v_geoip_dir}/#{@v_geoipname}"
 @v_unicode_mapname      = "unicode.map"
 @v_unicode_map          = "/etc/snort/#{@group_id}/#{@v_unicode_mapname}"
+@v_snortml_rule         = "/etc/snort/#{@group_id}/ml.rules"
 
 @chef=ChefAPI.new(
   server: @weburl,
@@ -245,7 +247,13 @@ def get_rules(remote_name, snortrules, binding_id)
 
   result = @chef.get_request("/sensors/#{@real_sensor_id}/#{remote_name}?group_id=#{@real_group_id}&binding_id=#{binding_id}")
   if result
-    File.open(snortrulestmp, 'w') {|f| f.write(result)}
+    File.open(snortrulestmp, 'w') { |f| f.write(result) }
+
+    unless File.zero?(@v_snortml_rule)
+      File.open(snortrulestmp, 'a') do |f|
+        f.write(File.read(@v_snortml_rule))
+      end
+    end
 
     v_md5sum_tmp  = Digest::MD5.hexdigest(File.read(snortrulestmp))
     v_md5sum      = File.exist?(snortrules) ? Digest::MD5.hexdigest(File.read(snortrules)) : ""
@@ -361,6 +369,42 @@ def get_thresholds(binding_id)
     return false
   end
 
+end
+
+def get_snortml_model
+  puts "Downloading SnortML model..."
+  print_length = "Downloading SnortML model...".length
+
+  model = "snort.model"
+  file_path = File.join(@v_snortml_dir, model)
+  tmp_file_path = "#{file_path}.tmp"
+
+  FileUtils.mkdir_p(File.dirname(file_path))
+
+  File.delete(tmp_file_path) if File.exist?(tmp_file_path)
+
+  result = @chef.get_request("/sensors/#{@client_id}/get_snortml_model")
+
+  if result
+    File.open(tmp_file_path, 'wb') { |f| f.write(result) }
+
+    tmp_md5 = Digest::MD5.hexdigest(File.read(tmp_file_path))
+    existing_md5 = File.exist?(file_path) ? Digest::MD5.hexdigest(File.read(file_path)) : ""
+
+    if tmp_md5 != existing_md5
+      File.rename(tmp_file_path, file_path)
+      puts " (updated)"
+    else
+      File.delete(tmp_file_path)
+      print " (not modified)"
+    end
+
+    print_ok(print_length)
+    return true
+  else
+    print_fail(print_length)
+    return false
+  end
 end
 
 def get_iplist_files
@@ -535,18 +579,7 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
     if binding_id.nil? or binding_id<0
       print "Error: binding id not found or it is not valid\n"
     elsif dbversion_ids.nil? or dbversion_ids.empty?
-      print "No rule DB versions specified for binding #{binding_id}. Cleaning up rules...\n"
-
-      # Paths base
-      bind_path = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}"
-      FileUtils.mkdir_p bind_path
-
-      # Clear rule files (empty them)
-      File.write("#{bind_path}/snort.rules", "")
-      File.write("#{bind_path}/preprocessor.rules", "")
-      File.write("#{bind_path}/threshold.conf", "# Empty threshold.conf")
-      File.write("#{bind_path}/dynamicrules/.keep", "") unless Dir.exist?("#{bind_path}/dynamicrules")
-      File.write("/etc/snort/#{@group_id}/sid-msg.map", "")
+      print "Error: dbversion id not found or it is not valid\n"
     else
       @v_rulefilename         = "snort.rules"
       @v_rulefile             = "/etc/snort/#{@group_id}/#{@v_rulefilename}"
@@ -563,6 +596,7 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
   
       get_rules("active_rules.txt", @v_rulefile, binding_id)
       get_classifications
+      get_snortml_model
       get_thresholds(binding_id)
 
       if @reload_snort == 1 or @restart_snort == 1
@@ -593,7 +627,9 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
     output = `/usr/lib/redborder/scripts/rb_remap_intrusion_rules.rb --no-color #{@v_classifications} #{@v_rulefile}`
     print output
     #before doing anything we need to check if it is correc
+    puts @group_id
     if system("/bin/env BOOTUP=none /usr/lib/redborder/bin/rb_verify_snort.sh #{@group_id}")
+      sleep 10
       if savecmd
         system("systemctl reload snort3@#{@group_id}") if @reload_snort == 1
         print "Reloading snort #{@group_id}" if @reload_snort == 1
