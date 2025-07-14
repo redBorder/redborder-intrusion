@@ -627,9 +627,7 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
     output = `/usr/lib/redborder/scripts/rb_remap_intrusion_rules.rb --no-color #{@v_classifications} #{@v_rulefile}`
     print output
     #before doing anything we need to check if it is correc
-    puts @group_id
     if system("/bin/env BOOTUP=none /usr/lib/redborder/bin/rb_verify_snort.sh #{@group_id}")
-      sleep 10
       if savecmd
         system("systemctl reload snort3@#{@group_id}") if @reload_snort == 1
         print "Reloading snort #{@group_id}" if @reload_snort == 1
