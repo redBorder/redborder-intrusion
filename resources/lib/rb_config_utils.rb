@@ -14,7 +14,8 @@ require 'base64'
 require 'fileutils'
 
 module Config_utils
-
+    LOG_DIRECTORY = '/var/log/rb-register-common'
+    LOG_FILE_NAME = 'register.log'
 
     @modelist_path="/usr/lib/redborder/mode-list.yml"
     #Function to check if mode is valid (if defined in mode-list.yml)
@@ -80,13 +81,15 @@ module Config_utils
       end
     end
 
+    def self.log_file
+      File.join(LOG_DIRECTORY, LOG_FILE_NAME)
+    end
+
     # Create log file for registration without rb-register
     def self.ensure_log_file_exists
-      log_directory = '/var/log/rb-register-common'
-      log_file = "#{log_directory}/register.log"
 
-      unless Dir.exist?(log_directory)
-        system("mkdir -p #{log_directory}")
+      unless Dir.exist?(LOG_DIRECTORY)
+        system("mkdir -p #{LOG_DIRECTORY}")
       end
 
       if File.exist?(log_file)
