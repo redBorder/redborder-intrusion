@@ -109,6 +109,7 @@ def get_segment_from_iface(iface)
   iface
 end
 
+
 groups = Dir.entries(BASE_DIR).select do |ent|
   path = File.join(BASE_DIR, ent)
   File.directory?(path) && ent =~ /^\d+_.+$/
