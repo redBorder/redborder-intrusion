@@ -16,17 +16,66 @@
 ########################################################################
 
 require 'open3'
+require 'optparse'
 
 RED    = "\e[0;31m"
 GREEN  = "\e[0;32m"
 YELLOW = "\e[1;33m"
 BLUE   = "\e[0;34m"
 NC     = "\e[0m"
+WHITE = "\e[97m"
 CHECK  = "✔"
 CROSS  = "✖"
+BLACK = "\e[38;2;50;50;50m"
 
 BASE_DIR            = "/etc/snort"
 SNORT_SERVICE_PREFX = "snort3@"
+
+options = {
+  show_ascii: false,
+}
+
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: rb_check_snort.rb [--show-ascii]"
+  opts.on('-h', '--help', 'Show this help message') do
+    puts opt
+    exit
+  end
+  opts.on('-s', '--show-ascii', 'Run with redBorder logo') do
+    options[:show_ascii] = true
+  end
+
+end
+
+begin
+  parser.parse!(ARGV)
+rescue OptionParser::InvalidOption, OptionParser::MissingArgument => e
+  warn e.message
+  puts parser
+  exit 1
+end
+
+def is_ml_engine_enabled(group)
+  file_path = File.join(BASE_DIR, group, "config.lua")
+  if File.exist?(file_path)
+    content = File.read(file_path)
+    return content.include?("snort_ml")
+  else
+    return false
+  end
+end
+
+def ml_engine_action(group)
+  file_path = File.join(BASE_DIR, group, "ml.rules")
+  if File.exist?(file_path)
+    content = File.read(file_path)
+    if content.include?("block")
+      return "block"
+    end
+  end
+
+  return "alert"
+end
 
 def visible_length(str)
   str.gsub(/\e\[[\d;]*m/, '').length
@@ -59,6 +108,7 @@ def get_segment_from_iface(iface)
 
   iface
 end
+
 
 groups = Dir.entries(BASE_DIR).select do |ent|
   path = File.join(BASE_DIR, ent)
@@ -97,8 +147,10 @@ groups_data.each do |gid, info|
       cpu_cores:"--",
       threads:  "--",
       iface:    "--",
+      segment:  "--",
       bp_support: CROSS,
-      bp_enabled: CROSS
+      bp_enabled: CROSS,
+      ml_enabled: CROSS
     }
 
     svc_name = "#{SNORT_SERVICE_PREFX}#{grp}"
@@ -143,24 +195,38 @@ groups_data.each do |gid, info|
       end
     end
 
+  if is_ml_engine_enabled(grp)
+    result[:ml_enabled] = "#{GREEN}#{CHECK}#{NC}"
+
+    if ml_engine_action(grp) == "alert"
+      result[:ml_action] = "#{GREEN}Alert#{NC}"
+    else
+      result[:ml_action] = "#{RED}Block#{NC}"
+    end
+  else
+    result[:ml_enabled] = "#{RED}#{CROSS}#{NC}"
+    result[:ml_action] = "#{YELLOW}Disabled#{NC}"
+  end
+   
     selected_iface = pick_one_iface(result[:iface])
     segment = get_segment_from_iface(selected_iface)
     if segment && !segment.empty?
+      result[:segment] = segment
       if segment.start_with?("bpbr")
         result[:bp_support] = "#{GREEN}#{CHECK}#{NC}"
         bypass_output, _err, _status = Open3.capture3("/usr/lib/redborder/bin/rb_bypass.sh -b #{segment} -g")
         if bypass_output =~ /non-Bypass mode/i
-          result[:bp_enabled] = "#{YELLOW}non-bp! (Software Forward)#{NC}"
+          result[:bp_enabled] = "#{YELLOW}non-bp!#{NC}"
         else
-          result[:bp_enabled] = "#{GREEN}bp #{CHECK} (Hardware Forward)#{NC}"
+          result[:bp_enabled] = "#{GREEN}bp #{CHECK}#{NC}"
         end
       else
         result[:bp_support] = "#{RED}#{CROSS}#{NC}"
-        result[:bp_enabled] = "#{YELLOW}non-bp! (Software Forward)#{NC}"
+        result[:bp_enabled] = "#{YELLOW}non-bp!#{NC}"
       end
     else
       result[:bp_support] = "#{RED}#{CROSS}#{NC}"
-      result[:bp_enabled] = "#{YELLOW}non-bp! (Software Forward)#{NC}"
+      result[:bp_enabled] = "#{YELLOW}non-bp!#{NC}"
     end
 
     results_by_group[gid][:bindings][bindid] = result
@@ -179,8 +245,11 @@ inline_w     = "Inline".length
 cpu_cores_w  = "CPU_CORES".length
 threads_w    = "Threads".length
 iface_w      = "IFACE".length
+segment_w    = "Segment".length
 bp_support_w = "BP Support?".length
 bp_enabled_w = "BP Enabled?".length
+ml_enabled_w = "ML Powered IPS?".length
+ml_action_w  = "ML Action?".length
 
 results_by_group.each do |gid, group_info|
   group_id_w   = [group_id_w, gid.length].max
@@ -198,8 +267,11 @@ results_by_group.each do |gid, group_info|
     cpu_cores_w  = [cpu_cores_w, h[:cpu_cores].length].max
     threads_w    = [threads_w, h[:threads].length].max
     iface_w      = [iface_w, h[:iface].length].max
+    segment_w    = [segment_w, h[:segment].length].max
     bp_support_w = [bp_support_w, visible_length(h[:bp_support])].max
     bp_enabled_w = [bp_enabled_w, visible_length(h[:bp_enabled])].max
+    ml_enabled_w = [ml_enabled_w, visible_length(h[:ml_enabled])].max
+    ml_action_w  = [ml_action_w, visible_length(h[:ml_action])].max
   end
 end
 
@@ -216,22 +288,49 @@ header << "Inline".ljust(inline_w)
 header << "CPU_CORES".ljust(cpu_cores_w)
 header << "Threads".ljust(threads_w)
 header << "IFACE".ljust(iface_w)
+header << "Segment".ljust(segment_w)
 header << "BP Support?".ljust(bp_support_w)
 header << "BP Enabled?".ljust(bp_enabled_w)
+header << "ML Powered IPS?".ljust(ml_enabled_w)
+header << "ML Action".ljust(ml_action_w)
 
-header_line = "║ #{header.join(" │ ")} ║"
+header_line = "│ #{header.join(" │ ")} │"
 line_len    = visible_length(header_line)
 
-top_border    = "╔" + ("═" * (line_len - 2)) + "╗"
-separator     = "╟" + ("─" * (line_len - 2)) + "╢"
-bottom_border = "╚" + ("═" * (line_len - 2)) + "╝"
+top_border    = "╭" + ("─" * (line_len - 2)) + "╮"
+separator     = "├" + ("─" * (line_len - 2)) + "┤"
+bottom_border = "╰" + ("─" * (line_len - 2)) + "╯"
 
 puts "#{BLUE}#{top_border}#{NC}"
-title = "SNORT3 STATUS DASHBOARD"
+
+show_ascii = true
+if options[:show_ascii]
+  title =""
+  title += "          #{RED}JJJJJJJJJJJJJ#{NC}                                                                                                           \n"
+  title += "       #{RED}JJJJJJJJJJJJJJJJJJJJ#{NC}                                                                                                       \n"
+  title += "     #{RED}JJJJJJJJJJJJJJJJJJJJJJJJ#{NC}                                                                                                     \n"
+  title += "    #{RED}JJJJJKLMLKKJJJJJJJJJJJJJJJ#{NC}                                                                                                    \n"
+  title += "  #{RED}JJJJJLW#{NC}#{WHITE}OOOOO#{NC}#{RED}YQJJJJJJJJJJJJJJJ                                    JJJJ#{NC}EBBB                                  BBBA                 #{NC}\n"
+  title += " #{RED}JJJJJLY#{NC}#{WHITE}OOOOOOO#{NC}#{RED}ZYOCDGJJJJJJJJJJJJ                                  JJJJ#{NC}JEBB                                  BBBB                 \n"
+  title += " #{RED}JJJJKN#{NC}#{WHITE}OOOOOOOO#{NC}#{BLACK}      #{NC}#{RED}EIJJJJJJJJJJ         JJJJJJJ  JJJJJJI    JJJJJJJJJ#{NC}EBBBBBBBBB    ABBBBBBA BBBBBBBA BBBBBBBBBA ABBBBBBA  BBBBBBBBB\n"
+  title += "#{RED}JJJJJJKU#{NC}#{WHITE}OOOOOO#{NC}#{BLACK}        #{NC}#{RED}CHJJJJJJJJJ         JJJJJJJJJJ    JJIJJJJJJJJJJJJ#{NC}EBBBBBBBBBBB BBBBBBBBBBBBBBBBBBBBBBBBBBBBABBB     BBBBBBBBBABB\n"
+  title += "#{RED}JJJJJJJKQ#{NC}#{WHITE}VX#{NC}ZZ#{NC}          #{NC}#{RED}EJJJJJJJJJJ        JJJJJ JJJJJJJJJJJJJJJ     JJJ#{NC}EBBBA    BBBBBBB    BBBBBBBA  BBB     BBBBBBBBBBBBBBBBBBBA  \n"
+  title += "#{RED}JJJJJJJJJIDG#{NC}#{WHITE}#{RED}G #{NC}         #{NC}#{RED}EJJJJJJJJJJ        JJJJ  JJJJJJJJJJJJJJJ     JJJ#{NC}EBBBA    ABBBBBB    BBBBBBBB BBBB     BBBBBBBBBBBBBBABBB   \n"
+  title += "#{RED}JJJJJJJJ#{NC}#{WHITE}LTZOOYQ#{NC}#{RED}#{NC}       #{NC}#{RED}CHJJJJJJJJJ         JJJJ   JJJJJ      JJJJJJJJJJJ#{NC}EBBBBBBBBBBBABBBBBABBBBABBBB  BBBBBBBBBBBBBBBB      BBBB   \n"
+  title += "#{RED}JJJJJJK#{NC}#{WHITE}POOOOOOXL#{NC}#{RED}BBBBBDIJJJJJJJJJJ         JJJJJ    JJJJJJJJ    JJJJJJJJ#{NC}JEBBBBBBBBBB   ABBBBBBA ABBBA   BBBBBBBBBBA BBBBBBB BBBB   \n"
+  title += "#{RED}JJJJJJJL#{NC}#{WHITE}WZOZZUD#{NC}#{RED}BBDGJJJJJJJJJJJJ#{NC}                                     Eneo Tecnología S.L - #{RED}N#{NC}ext #{RED}G#{NC}eneration #{RED}I#{NC}ntrusion #{RED}P#{NC}revention #{RED}S#{NC}ystem\n"                       
+  title += "#{RED}  JJJJJJJKLMMKKJJJJJJJJJJJJJJJJ  #{NC} \n"
+  title += "#{RED}   IJJJJJJJJJJJJJJJJJJJJJJJJJJ   #{NC}\n"
+  title += "#{RED}     JJJJJJJJJJJJJJJJJJJJJJJI  #{NC}\n"
+  title += "#{RED}       JJJJJJJJJJJJJJJJJJJJ  #{NC}\n"
+  title += "#{RED}          JJJJJJJJJJJJJ    #{NC}\n"
+  puts title
+end
+title = "Intrusion Sensor Status"
 inner = line_len - 2
-left_pad  = (inner - title.length) / 2
-right_pad = inner - title.length - left_pad
-puts "#{BLUE}║#{' ' * left_pad}#{title}#{' ' * right_pad}║#{NC}"
+left_pad  = [0, (inner - title.length) / 2].max
+right_pad = [0, inner - title.length - left_pad].max
+puts "#{BLUE}│#{' ' * left_pad}#{title}#{' ' * right_pad}│#{NC}"
 puts "#{BLUE}#{separator}#{NC}"
 
 puts header_line
@@ -278,8 +377,10 @@ results_by_group.each do |gid, group_info|
     padded_iface     = h[:iface].ljust(iface_w)
     padded_bp_support= pad_ansi(h[:bp_support], bp_support_w)
     padded_bp_enabled= pad_ansi(h[:bp_enabled], bp_enabled_w)
-
-    puts "║ #{col_gid} │ #{col_gname} │ #{bind_text} │ #{padded_svc} │ #{padded_rules} │ #{padded_count} │ #{padded_pid} │ #{padded_mode} │ #{padded_inline} │ #{padded_cpu_cores} │ #{padded_threads} │ #{padded_iface} │ #{padded_bp_support} │ #{padded_bp_enabled} ║"
+    padded_segment   = pad_ansi(h[:segment], segment_w)
+    ml_enabled       = pad_ansi(h[:ml_enabled], ml_enabled_w)
+    ml_action        = pad_ansi(h[:ml_action], ml_action_w)
+    puts "│ #{col_gid} │ #{col_gname} │ #{bind_text} │ #{padded_svc} │ #{padded_rules} │ #{padded_count} │ #{padded_pid} │ #{padded_mode} │ #{padded_inline} │ #{padded_cpu_cores} │ #{padded_threads} │ #{padded_iface} │ #{padded_segment} │ #{padded_bp_support} │ #{padded_bp_enabled} │ #{ml_enabled} │ #{ml_action} │"
   end
 end
 

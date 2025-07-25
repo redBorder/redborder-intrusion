@@ -36,7 +36,7 @@ execute_action() {
   sleep "$SLEEP_INTERVAL"
 
   if [ "$action" = "status" ]; then
-    /usr/bin/env ruby "$RUBY_SCRIPT" "$group" &>/dev/null
+    /usr/lib/rvm/bin/rvm ruby-2.7.5@web do "$RUBY_SCRIPT" "$group" &>/dev/null
     rc=$?
   else
     systemctl "$action" "${SNORT_UNIT_PREFIX}${group}" &>/dev/null
@@ -84,6 +84,15 @@ case "$1" in
   status)
     if [ -x "$RUBY_SCRIPT" ]; then
       /usr/bin/env ruby "$RUBY_SCRIPT"
+      exit $?
+    else
+      echo "ERROR: Cannot find or execute $RUBY_SCRIPT"
+      exit 1
+    fi
+    ;;
+  status_ascii)
+    if [ -x "$RUBY_SCRIPT" ]; then
+      /usr/bin/env ruby "$RUBY_SCRIPT" -s
       exit $?
     else
       echo "ERROR: Cannot find or execute $RUBY_SCRIPT"
