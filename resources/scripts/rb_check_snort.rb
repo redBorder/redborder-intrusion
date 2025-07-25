@@ -55,6 +55,28 @@ rescue OptionParser::InvalidOption, OptionParser::MissingArgument => e
   exit 1
 end
 
+def is_ml_engine_enabled(group)
+  file_path = File.join(BASE_DIR, group, "config.lua")
+  if File.exist?(file_path)
+    content = File.read(file_path)
+    return content.include?("snort_ml")
+  else
+    return false
+  end
+end
+
+def ml_engine_action(group)
+  file_path = File.join(BASE_DIR, group, "ml.rules")
+  if File.exist?(file_path)
+    content = File.read(file_path)
+    if content.include?("block")
+      return "block"
+    end
+  end
+
+  return "alert"
+end
+
 def visible_length(str)
   str.gsub(/\e\[[\d;]*m/, '').length
 end
@@ -127,7 +149,8 @@ groups_data.each do |gid, info|
       iface:    "--",
       segment:  "--",
       bp_support: CROSS,
-      bp_enabled: CROSS
+      bp_enabled: CROSS,
+      ml_enabled: CROSS
     }
 
     svc_name = "#{SNORT_SERVICE_PREFX}#{grp}"
@@ -172,6 +195,19 @@ groups_data.each do |gid, info|
       end
     end
 
+  if is_ml_engine_enabled(grp)
+    result[:ml_enabled] = "#{GREEN}#{CHECK}#{NC}"
+
+    if ml_engine_action(grp) == "alert"
+      result[:ml_action] = "#{GREEN}Alert#{NC}"
+    else
+      result[:ml_action] = "#{RED}Block#{NC}"
+    end
+  else
+    result[:ml_enabled] = "#{RED}#{CROSS}#{NC}"
+    result[:ml_action] = "#{YELLOW}Disabled#{NC}"
+  end
+   
     selected_iface = pick_one_iface(result[:iface])
     segment = get_segment_from_iface(selected_iface)
     if segment && !segment.empty?
@@ -212,6 +248,8 @@ iface_w      = "IFACE".length
 segment_w    = "Segment".length
 bp_support_w = "BP Support?".length
 bp_enabled_w = "BP Enabled?".length
+ml_enabled_w = "ML Powered IPS?".length
+ml_action_w  = "ML Action?".length
 
 results_by_group.each do |gid, group_info|
   group_id_w   = [group_id_w, gid.length].max
@@ -232,6 +270,8 @@ results_by_group.each do |gid, group_info|
     segment_w    = [segment_w, h[:segment].length].max
     bp_support_w = [bp_support_w, visible_length(h[:bp_support])].max
     bp_enabled_w = [bp_enabled_w, visible_length(h[:bp_enabled])].max
+    ml_enabled_w = [ml_enabled_w, visible_length(h[:ml_enabled])].max
+    ml_action_w  = [ml_action_w, visible_length(h[:ml_action])].max
   end
 end
 
@@ -251,6 +291,8 @@ header << "IFACE".ljust(iface_w)
 header << "Segment".ljust(segment_w)
 header << "BP Support?".ljust(bp_support_w)
 header << "BP Enabled?".ljust(bp_enabled_w)
+header << "ML Powered IPS?".ljust(ml_enabled_w)
+header << "ML Action".ljust(ml_action_w)
 
 header_line = "│ #{header.join(" │ ")} │"
 line_len    = visible_length(header_line)
@@ -276,7 +318,7 @@ if options[:show_ascii]
   title += "#{RED}JJJJJJJJJIDG#{NC}#{WHITE}#{RED}G #{NC}         #{NC}#{RED}EJJJJJJJJJJ        JJJJ  JJJJJJJJJJJJJJJ     JJJ#{NC}EBBBA    ABBBBBB    BBBBBBBB BBBB     BBBBBBBBBBBBBBABBB   \n"
   title += "#{RED}JJJJJJJJ#{NC}#{WHITE}LTZOOYQ#{NC}#{RED}#{NC}       #{NC}#{RED}CHJJJJJJJJJ         JJJJ   JJJJJ      JJJJJJJJJJJ#{NC}EBBBBBBBBBBBABBBBBABBBBABBBB  BBBBBBBBBBBBBBBB      BBBB   \n"
   title += "#{RED}JJJJJJK#{NC}#{WHITE}POOOOOOXL#{NC}#{RED}BBBBBDIJJJJJJJJJJ         JJJJJ    JJJJJJJJ    JJJJJJJJ#{NC}JEBBBBBBBBBB   ABBBBBBA ABBBA   BBBBBBBBBBA BBBBBBB BBBB   \n"
-  title += "#{RED}JJJJJJJL#{NC}#{WHITE}WZOZZUD#{NC}#{RED}BBDGJJJJJJJJJJJJ#{NC}                                                                           #{RED}I#{NC}ntrusion #{RED}P#{NC}revention #{RED}S#{NC}ystem\n"                       
+  title += "#{RED}JJJJJJJL#{NC}#{WHITE}WZOZZUD#{NC}#{RED}BBDGJJJJJJJJJJJJ#{NC}                                     Eneo Tecnología S.L - #{RED}N#{NC}ext #{RED}G#{NC}eneration #{RED}I#{NC}ntrusion #{RED}P#{NC}revention #{RED}S#{NC}ystem\n"                       
   title += "#{RED}  JJJJJJJKLMMKKJJJJJJJJJJJJJJJJ  #{NC} \n"
   title += "#{RED}   IJJJJJJJJJJJJJJJJJJJJJJJJJJ   #{NC}\n"
   title += "#{RED}     JJJJJJJJJJJJJJJJJJJJJJJI  #{NC}\n"
@@ -336,7 +378,9 @@ results_by_group.each do |gid, group_info|
     padded_bp_support= pad_ansi(h[:bp_support], bp_support_w)
     padded_bp_enabled= pad_ansi(h[:bp_enabled], bp_enabled_w)
     padded_segment   = pad_ansi(h[:segment], segment_w)
-    puts "│ #{col_gid} │ #{col_gname} │ #{bind_text} │ #{padded_svc} │ #{padded_rules} │ #{padded_count} │ #{padded_pid} │ #{padded_mode} │ #{padded_inline} │ #{padded_cpu_cores} │ #{padded_threads} │ #{padded_iface} │ #{padded_segment} │ #{padded_bp_support} │ #{padded_bp_enabled} │"
+    ml_enabled       = pad_ansi(h[:ml_enabled], ml_enabled_w)
+    ml_action        = pad_ansi(h[:ml_action], ml_action_w)
+    puts "│ #{col_gid} │ #{col_gname} │ #{bind_text} │ #{padded_svc} │ #{padded_rules} │ #{padded_count} │ #{padded_pid} │ #{padded_mode} │ #{padded_inline} │ #{padded_cpu_cores} │ #{padded_threads} │ #{padded_iface} │ #{padded_segment} │ #{padded_bp_support} │ #{padded_bp_enabled} │ #{ml_enabled} │ #{ml_action} │"
   end
 end
 
