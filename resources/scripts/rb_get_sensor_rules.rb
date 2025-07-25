@@ -156,8 +156,9 @@ class ChefAPI
 
 end
 
-CLIENTPEM   = "/etc/chef/client.pem"
-QUIET       = 0
+CLIENTPEM    = "/etc/chef/client.pem"
+QUIET        = 0
+TFLITE_MAGIC = [0x1c, 0x00, 0x00, 0x00, 0x54, 0x46, 0x4c, 0x33]
 
 @reload_snort = 0
 @reload_snort_ips = 0
@@ -371,6 +372,22 @@ def get_thresholds(binding_id)
 
 end
 
+def tensorflow_lite_model?(file_path)
+  File.open(file_path, "rb") do |f|
+    bytes = f.read(TFLITE_MAGIC.size)&.bytes
+
+    if bytes.nil? || bytes.size < TFLITE_MAGIC.size
+      exit 1
+    end
+
+    if bytes == TFLITE_MAGIC
+      return true
+    end
+  end
+
+  return false
+end
+
 def get_snortml_model
   puts "Downloading SnortML model..."
   print_length = "Downloading SnortML model...".length
@@ -380,13 +397,26 @@ def get_snortml_model
   tmp_file_path = "#{file_path}.tmp"
 
   FileUtils.mkdir_p(File.dirname(file_path))
-
   File.delete(tmp_file_path) if File.exist?(tmp_file_path)
 
-  result = @chef.get_request("/sensors/#{@client_id}/get_snortml_model")
+  result = @chef.get_request("/sensors/#{@client_id}/snortml_model")
 
   if result
     File.open(tmp_file_path, 'wb') { |f| f.write(result) }
+
+    if File.zero?(tmp_file_path)
+      File.delete(tmp_file_path)
+      print " (empty file ignored)"
+      print_fail(print_length)
+      return false
+    end
+
+    unless tensorflow_lite_model?(tmp_file_path)
+      File.delete(tmp_file_path)
+      print " (invalid TensorFlow Lite model ignored)"
+      print_fail(print_length)
+      return false
+    end
 
     tmp_md5 = Digest::MD5.hexdigest(File.read(tmp_file_path))
     existing_md5 = File.exist?(file_path) ? Digest::MD5.hexdigest(File.read(file_path)) : ""
