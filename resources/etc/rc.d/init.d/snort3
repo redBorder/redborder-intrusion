@@ -27,7 +27,7 @@ parse_group() {
 execute_action() {
   local action=$1 group=$2
   parse_group "$group"
-  
+
   echo -n "${action^} Group $group_id ($group_name), binding $binding_id... "
   sleep "$SLEEP_INTERVAL"
 
@@ -46,7 +46,9 @@ execute_action() {
   fi
 
   text_length=${#message}
-  echo -e "$(printf "%-${RES_COL}s" "$message")"
+  for ((i = 0; i < text_length; i++)); do message=" $message"; done
+
+  echo -e "$message"
 }
 
 run_for_all_groups() {
