@@ -129,12 +129,12 @@ class ChefAPI
   # Returns a Hash with the necessary headers.
   def headers
     # remove parameters from the path
-    path.split('?').first
+    can_path = path.split('?').first
 
     body      = ''
     timestamp = Time.now.utc.iso8601
     key       = OpenSSL::PKey::RSA.new(File.read(key_file))
-    canonical = "Method:GET\nHashed Path:#{encode(_path)}\nX-Ops-Content-Hash:#{encode(body)}\nX-Ops-Timestamp:#{timestamp}\nX-Ops-UserId:#{client_name}"
+    canonical = "Method:GET\nHashed Path:#{encode(can_path)}\nX-Ops-Content-Hash:#{encode(body)}\nX-Ops-Timestamp:#{timestamp}\nX-Ops-UserId:#{client_name}"
 
     header_hash = {
       'Accept' => 'application/json',
@@ -655,11 +655,10 @@ if Dir.exist?(@v_group_dir) && File.exist?("#{@v_group_dir}/env")
     output = `/usr/lib/redborder/scripts/rb_remap_intrusion_rules.rb --no-color #{@v_classifications} #{@v_rulefile}`
     print output
     # before doing anything we need to check if it is correc
+    print 'Verifying snort'
     if system("/bin/env BOOTUP=none /usr/lib/redborder/bin/rb_verify_snort.sh #{@group_id}")
       system("systemctl reload snort3@#{@group_id}") if @reload_snort == 1
       print "Reloading snort #{@group_id}" if @reload_snort == 1
-      if savecmd
-      end
       system("systemctl restart snort3@#{@group_id}") if @restart_snort == 1
       print "Restarting snort #{@group_id}" if @restart_snort == 1
       if @reload_snort_ips == 1
