@@ -14,10 +14,6 @@ SNORT_UNIT_PREFIX="snort3@"
 SNORT_CONF_DIR="/etc/snort"
 SLEEP_INTERVAL=1
 
-GREEN='\033[38;2;0;255;0m'
-RED='\033[38;2;255;0;0m'
-NC='\033[0m'
-
 get_snort_groups() {
   find "$SNORT_CONF_DIR" -maxdepth 1 -mindepth 1 -type d -printf "%f\n" \
     | grep -E '^[0-9]+_[^_]+_[0-9]+$' \
@@ -31,8 +27,8 @@ parse_group() {
 execute_action() {
   local action=$1 group=$2
   parse_group "$group"
-  printf "%s Group %s (%s), binding %s... " \
-    "${action^}" "$group_id" "$group_name" "$binding_id"
+
+  echo -n "${action^} Group $group_id ($group_name), binding $binding_id... "
   sleep "$SLEEP_INTERVAL"
 
   if [ "$action" = "status" ]; then
@@ -44,10 +40,15 @@ execute_action() {
   fi
 
   if [ $rc -eq 0 ]; then
-    echo -e "[${GREEN}OK${NC}]"
+    message="\e[32m[  OK  ]\e[0m"
   else
-    echo -e "[${RED}FAIL${NC}]"
+    message="\e[31m[ FAIL ]\e[0m"
   fi
+
+  text_length=${#message}
+  for ((i = 0; i < text_length; i++)); do message=" $message"; done
+
+  echo -e "$message"
 }
 
 run_for_all_groups() {
