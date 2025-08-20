@@ -275,6 +275,107 @@ def get_rules(remote_name, snortrules, binding_id)
   end
 end
 
+def create_sid_msg
+  print "Creating sig.msg file "
+  print_length = "Creating sig.msg file ".length
+
+  snortrules_sidmsgtmp = "#{@v_sidfile}.tmp"
+  File.new(snortrules_sidmsgtmp, 'w+')
+
+  Dir.entries("/etc/snort/#{@group_id}/").select{|d| d =~ /^snort-binding-\d+$/}.each do |directory|
+
+    File.open("/etc/snort/#{@group_id}/#{directory}/snort.rules", "r").each do |line|
+      next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
+
+      v_sid = /sid:\s*(\d+);/.match(line)[1]
+      v_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)[1]
+
+      if v_sid and v_msg
+        File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{v_sid} || #{v_msg}\n"}
+      end
+    end
+
+    File.open("/etc/snort/#{@group_id}/#{directory}/preprocessor.rules", "r").each do |line|
+      next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
+
+      v_sid = /sid:\s*(\d+);/.match(line)[1]
+      v_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)[1]
+
+      if v_sid and v_msg
+        File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{v_sid} || #{v_msg}\n"}
+      end
+    end
+
+    File.open("/etc/snort/#{@group_id}/#{directory}/so.rules", "r").each do |line|
+      next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
+
+      v_sid = /sid:\s*(\d+);/.match(line)[1]
+      v_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)[1]
+
+      if v_sid and v_msg
+        File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{v_sid} || #{v_msg}\n"}
+      end
+    end
+
+  end
+
+  v_md5sum_tmp  = Digest::MD5.hexdigest(File.read(snortrules_sidmsgtmp))
+  v_md5sum      = File.exist?(@v_sidfile) ? Digest::MD5.hexdigest(File.read(@v_sidfile)) : ""
+
+  if v_md5sum == v_md5sum_tmp
+    print "(not modified) "
+    print_length += "(not modified) ".length
+    File.delete(snortrules_sidmsgtmp) if File.exist?(snortrules_sidmsgtmp)
+  end
+
+  print_ok(print_length)
+
+end
+
+def get_dynamic_rules(dbversion_ids)
+
+  print "Downloading snort-so_rules-#{@v_snortversion} "
+  print_length = "Downloading snort-so_rules-#{@v_snortversion} ".length
+
+  FileUtils.remove_dir(@v_dynamucdirtmp) if Dir.exist?(@v_dynamucdirtmp)
+  FileUtils.mkdir_p @v_dynamucdirtmp
+  FileUtils.remove_dir(@v_so_rules_dir_tmp) if Dir.exist?(@v_so_rules_dir_tmp)
+  FileUtils.mkdir_p @v_so_rules_dir_tmp
+  File.delete @v_so_rulestmp if File.exist?(@v_so_rulestmp)
+
+  dbversion_ids.split(",").each do |dbversion_id|
+
+    result = @chef.get_request("/rule_versions/#{dbversion_id}/so_rules_file")
+
+    if result
+      open(@v_so_rulestmp, "wb") do |file|
+        file.write(result)
+      end
+
+      system("tar xzf #{@v_so_rulestmp} -C #{@v_so_rules_dir_tmp}")
+
+      files = find(@v_so_rules_dir_tmp, "snort-so_rules-#{@v_snortversion}.tar.gz")
+
+      if files.empty?
+        system("tar xzf #{@v_so_rules_dir_tmp}/snort-so_rules.tar.gz -C #{@v_dynamucdirtmp}")
+      else
+        system("tar xzf #{files.first} -C #{@v_dynamucdirtmp}")
+      end
+    end
+  end
+
+  system("diff -r #{@v_dynamucdirtmp} #{@v_dynamicdir} &>/dev/null")
+  if $?.success?
+    print "(not modified) "
+    print_length += "(not modified) ".length
+  else
+    File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
+  end
+
+  print_ok(print_length)
+  return true
+end
+
 def get_gen_msg
 
   print "Downloading gen-msg.map "
@@ -598,7 +699,7 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
   File.delete "#{@v_unicode_map}.tmp" if File.exist?("#{@v_unicode_map}.tmp")
   binding_ids.each do |binding_id|
     bind_match = /^([^:]+):([^:]+)$/.match(binding_id.to_s)
-  
+
     if bind_match.nil?
       dbversion_ids = opt["d"].to_s
       binding_id=binding_id.to_i
@@ -606,43 +707,78 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
       dbversion_ids=bind_match[2].to_s
       binding_id=bind_match[1].to_i
     end
+
     if binding_id.nil? or binding_id<0
       print "Error: binding id not found or it is not valid\n"
     elsif dbversion_ids.nil? or dbversion_ids.empty?
-      print "Error: dbversion id not found or it is not valid\n"
+      print "No rule DB versions specified for binding #{binding_id}. Cleaning up rules...\n"
+
+      # Paths base
+      bind_path = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}"
+      FileUtils.mkdir_p bind_path
+
+      # Clear rule files (empty them)
+      File.write("#{bind_path}/snort.rules", "")
+      File.write("#{bind_path}/preprocessor.rules", "")
+      File.write("#{bind_path}/threshold.conf", "# Empty threshold.conf")
+      File.write("#{bind_path}/dynamicrules/.keep", "") unless Dir.exist?("#{bind_path}/dynamicrules")
+      File.write("/etc/snort/#{@group_id}/sid-msg.map", "")
     else
+      system("source /etc/snort/#{@group_id}/snort-binding-#{binding_id}/snort-bindings.conf; echo \"Binding: $BINDING_NAME\"")
       @v_rulefilename         = "snort.rules"
-      @v_rulefile             = "/etc/snort/#{@group_id}/#{@v_rulefilename}"
+      @v_rulefile             = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/#{@v_rulefilename}"
+      @v_prepfilename         = "preprocessor.rules"
+      @v_prepfile             = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/#{@v_prepfilename}"
+      @v_dynamucdirtmp        = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/dynamicrules-tmp"
+      @v_dynamicdir           = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/dynamicrules"
+      @v_cmdfile              = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/rb_get_sensor_rules.sh"
+      @v_sidfilename          = "sid-msg.map"
+      @v_sidfile              = "/etc/snort/#{@group_id}/#{@v_sidfilename}"
+      @v_thresholdname        = "threshold.conf"
+      @v_threshold            = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/#{@v_thresholdname}"
       @v_classificationsname  = "classification.config"
       @v_classifications      = "/etc/snort/#{@group_id}/#{@v_classificationsname}"
-      @v_thresholdname        = "events.lua"
-      @v_threshold            = "/etc/snort/#{@group_id}/#{@v_thresholdname}"
-      @v_prepfilename         = "preprocessor.rules"
-      @v_cmdfile              = "/etc/snort/#{@group_id}/rb_get_sensor_rules.sh"
       @v_snortversion         = `/usr/sbin/snort --version 2>&1|grep Version|sed 's/.*Version //'|awk '{print $1}'`.chomp
-      @v_backup_dir           = "/etc/snort/#{@group_id}/backups"
-  
+      @v_so_rules_dir_tmp     = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/so_rules-tmp"
+      @v_so_rulestmp          = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/snort-so_rules-tmp.tar.gz"
+      @v_backup_dir           = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/backups"
+
       FileUtils.mkdir_p @v_backup_dir
-  
+      FileUtils.mkdir_p @v_dynamicdir
+
       get_rules("active_rules.txt", @v_rulefile, binding_id)
+      get_rules("preprocessor_rules.txt", @v_prepfile, binding_id)
+      get_dynamic_rules(dbversion_ids)
       get_classifications
-      get_snortml_model
       get_thresholds(binding_id)
 
       if @reload_snort == 1 or @restart_snort == 1
         datestr = Time.now.strftime("%Y%m%d%H%M%S")
+
         copy_backup(@v_backup_dir, datestr, "#{@v_rulefile}.tmp"        , @v_rulefile       , @v_rulefilename, backups )
+        copy_backup(@v_backup_dir, datestr, "#{@v_prepfile}.tmp"        , @v_prepfile       , @v_prepfilename, backups )
         copy_backup(@v_backup_dir, datestr, "#{@v_classifications}.tmp" , @v_classifications, @v_classificationsname, backups )
         copy_backup(@v_backup_dir, datestr, "#{@v_threshold}.tmp"       , @v_threshold      , @v_thresholdname, backups )
+
+        FileUtils.remove_dir(@v_dynamicdir) if Dir.exist?(@v_dynamicdir)
+        File.rename(@v_dynamucdirtmp, @v_dynamicdir)
+
+        create_sid_msg
+        copy_backup(@v_backup_dir, datestr, "#{@v_sidfile}.tmp", @v_sidfile, @v_sidfilename, backups )
       end
 
-      File.delete "#{@v_rulefile}.tmp" if File.exist?("#{@v_rulefile}.tmp")
+      File.delete "#{@v_prepfile}.tmp" if File.exist?("#{@v_prepfile}.tmp")
+      File.delete "#{@v_sidfile}.tmp" if File.exist?("#{@v_sidfile}.tmp")
       File.delete "#{@v_classifications}.tmp" if File.exist?("#{@v_classifications}.tmp")
+      File.delete "#{@v_rulefile}.tmp" if File.exist?("#{@v_rulefile}.tmp")
+      File.delete "#{@v_so_rulestmp}" if File.exist?("#{@v_so_rulestmp}")
       File.delete "#{@v_threshold}.tmp" if File.exist?("#{@v_threshold}.tmp")
+      FileUtils.remove_dir(@v_dynamucdirtmp) if Dir.exist?(@v_dynamucdirtmp)
+
       if savecmd and @group_id and !binding_id.nil? and !dbversion_ids.nil? and !dbversion_ids.empty?
         begin
           file = File.open(@v_cmdfile, "w")
-          file.write("#!/bin/bash\n\n") 
+          file.write("#!/bin/bash\n\n")
           file.write("/usr/lib/redborder/bin/rb_get_sensor_rules.rb -f -r -g '#{@group_id}' -b '#{binding_id}' -d '#{dbversion_ids}'\n")
         rescue IOError => e
           print "Error saving #{file}"
