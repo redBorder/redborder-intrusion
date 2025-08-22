@@ -410,35 +410,6 @@ def get_gen_msg
 
 end
 
-def get_classifications
-  print "Downloading classifications "
-  print_length = "Downloading classifications ".length
-
-  File.delete "#{@v_classifications}.tmp" if File.exist?("#{@v_classifications}.tmp")
-
-  result = @chef.get_request("/sensors/#{@real_sensor_id}/classifications.txt?group_id=#{@real_group_id}")
-
-  if result
-    File.open("#{@v_classifications}.tmp", 'w') {|f| f.write(result)}
-    v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_classifications}.tmp"))
-    v_md5sum        = File.exists?(@v_classifications) ? Digest::MD5.hexdigest(File.read(@v_classifications)) : ""
-
-    if v_md5sum != v_md5sum_tmp
-      File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
-    else
-      print "(not modified) "
-      print_length += "(not modified) ".length
-      File.delete("#{@v_classifications}.tmp") if File.exist?("#{@v_classifications}.tmp")
-    end
-
-    print_ok(print_length)
-    return true
-  else
-    print_fail(print_length)
-    return false
-  end
-end
-
 def get_rule_db_version_ids
   @chef.get_request("/sensors/#{@client_id}/get_rule_db_version_ids?group_id=#{@real_group_id}")
 end
@@ -725,23 +696,29 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
       File.write("/etc/snort/#{@group_id}/sid-msg.map", "")
     else
       system("source /etc/snort/#{@group_id}/snort-binding-#{binding_id}/snort-bindings.conf; echo \"Binding: $BINDING_NAME\"")
-      @v_rulefilename         = "snort.rules"
-      @v_rulefile             = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/#{@v_rulefilename}"
+      @v_rules_dir            = "/etc/snort/#{@group_id}/rules"
+      @v_dynamic_root         = "/etc/snort/#{@group_id}/dynamicrules"
+      @v_backup_root          = "/etc/snort/#{@group_id}/backups"
+      FileUtils.mkdir_p @v_rules_dir
+      FileUtils.mkdir_p @v_dynamic_root
+      FileUtils.mkdir_p @v_backup_root
+      @v_rulefilename         = "binding-#{binding_id}.rules"
+      @v_rulefile             = File.join(@v_rules_dir, @v_rulefilename)
       @v_prepfilename         = "preprocessor.rules"
-      @v_prepfile             = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/#{@v_prepfilename}"
-      @v_dynamucdirtmp        = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/dynamicrules-tmp"
-      @v_dynamicdir           = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/dynamicrules"
-      @v_cmdfile              = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/rb_get_sensor_rules.sh"
+      @v_dynamucdirtmp        = File.join(@v_dynamic_root, "binding-#{binding_id}-tmp")
+      @v_dynamicdir           = File.join(@v_dynamic_root, "binding-#{binding_id}")
+      @v_prepfile             = File.join(@v_dynamicdir, @v_prepfilename)
+      @v_cmdfile              = "/etc/snort/#{@group_id}/rb_get_sensor_rules_binding_#{binding_id}.sh"
       @v_sidfilename          = "sid-msg.map"
       @v_sidfile              = "/etc/snort/#{@group_id}/#{@v_sidfilename}"
       @v_thresholdname        = "threshold.conf"
-      @v_threshold            = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/#{@v_thresholdname}"
+      @v_threshold            = File.join(@v_dynamicdir, @v_thresholdname)
       @v_classificationsname  = "classification.config"
       @v_classifications      = "/etc/snort/#{@group_id}/#{@v_classificationsname}"
       @v_snortversion         = `/usr/sbin/snort --version 2>&1|grep Version|sed 's/.*Version //'|awk '{print $1}'`.chomp
-      @v_so_rules_dir_tmp     = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/so_rules-tmp"
-      @v_so_rulestmp          = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/snort-so_rules-tmp.tar.gz"
-      @v_backup_dir           = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}/backups"
+      @v_so_rules_dir_tmp     = File.join(@v_dynamicdir, "so_rules-tmp")
+      @v_so_rulestmp          = File.join(@v_dynamicdir, "snort-so_rules-tmp.tar.gz")
+      @v_backup_dir           = File.join(@v_backup_root, "binding-#{binding_id}")
 
       FileUtils.mkdir_p @v_backup_dir
       FileUtils.mkdir_p @v_dynamicdir
@@ -761,7 +738,7 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
         copy_backup(@v_backup_dir, datestr, "#{@v_threshold}.tmp"       , @v_threshold      , @v_thresholdname, backups )
 
         FileUtils.remove_dir(@v_dynamicdir) if Dir.exist?(@v_dynamicdir)
-        File.rename(@v_dynamucdirtmp, @v_dynamicdir)
+        File.rename(@v_dynamucdirtmp, @v_dynamicdir) if Dir.exist?(@v_dynamucdirtmp)
 
         create_sid_msg
         copy_backup(@v_backup_dir, datestr, "#{@v_sidfile}.tmp", @v_sidfile, @v_sidfilename, backups )
