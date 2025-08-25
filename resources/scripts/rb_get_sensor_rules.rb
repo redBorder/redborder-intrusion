@@ -280,52 +280,58 @@ def create_sid_msg
   print_length = "Creating sig.msg file ".length
 
   snortrules_sidmsgtmp = "#{@v_sidfile}.tmp"
-  File.new(snortrules_sidmsgtmp, 'w+')
+  File.open(snortrules_sidmsgtmp, 'w') {}
 
   Dir.entries("/etc/snort/#{@group_id}/").select{|d| d =~ /^snort-binding-\d+$/}.each do |directory|
+    bind_base = "/etc/snort/#{@group_id}/#{directory}"
 
-    File.open("/etc/snort/#{@group_id}/#{directory}/snort.rules", "r").each do |line|
-      next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
-
-      v_sid = /sid:\s*(\d+);/.match(line)[1]
-      v_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)[1]
-
-      if v_sid and v_msg
-        File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{v_sid} || #{v_msg}\n"}
+    rule_path = File.join(bind_base, "snort.rules")
+    if File.exist?(rule_path)
+      File.foreach(rule_path) do |line|
+        next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
+        m_sid = /sid:\s*(\d+);/.match(line)
+        m_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)
+        if m_sid && m_msg
+          File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{m_sid[1]} || #{m_msg[1]}\n"}
+        end
       end
     end
 
-    File.open("/etc/snort/#{@group_id}/#{directory}/preprocessor.rules", "r").each do |line|
-      next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
-
-      v_sid = /sid:\s*(\d+);/.match(line)[1]
-      v_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)[1]
-
-      if v_sid and v_msg
-        File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{v_sid} || #{v_msg}\n"}
+    prep_path = File.join(bind_base, "preprocessor.rules")
+    if File.exist?(prep_path)
+      File.foreach(prep_path) do |line|
+        next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
+        m_sid = /sid:\s*(\d+);/.match(line)
+        m_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)
+        if m_sid && m_msg
+          File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{m_sid[1]} || #{m_msg[1]}\n"}
+        end
       end
     end
 
-    File.open("/etc/snort/#{@group_id}/#{directory}/so.rules", "r").each do |line|
-      next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
-
-      v_sid = /sid:\s*(\d+);/.match(line)[1]
-      v_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)[1]
-
-      if v_sid and v_msg
-        File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{v_sid} || #{v_msg}\n"}
+    so_path = File.join(bind_base, "so.rules")
+    if File.exist?(so_path)
+      File.foreach(so_path) do |line|
+        next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
+        m_sid = /sid:\s*(\d+);/.match(line)
+        m_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)
+        if m_sid && m_msg
+          File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{m_sid[1]} || #{m_msg[1]}\n"}
+        end
       end
     end
-
+    
   end
 
-  v_md5sum_tmp  = Digest::MD5.hexdigest(File.read(snortrules_sidmsgtmp))
-  v_md5sum      = File.exist?(@v_sidfile) ? Digest::MD5.hexdigest(File.read(@v_sidfile)) : ""
+  if File.exist?(snortrules_sidmsgtmp)
+    v_md5sum_tmp  = Digest::MD5.hexdigest(File.read(snortrules_sidmsgtmp))
+    v_md5sum      = File.exist?(@v_sidfile) ? Digest::MD5.hexdigest(File.read(@v_sidfile)) : ""
 
-  if v_md5sum == v_md5sum_tmp
-    print "(not modified) "
-    print_length += "(not modified) ".length
-    File.delete(snortrules_sidmsgtmp) if File.exist?(snortrules_sidmsgtmp)
+    if v_md5sum == v_md5sum_tmp
+      print "(not modified) "
+      print_length += "(not modified) ".length
+      File.delete(snortrules_sidmsgtmp) if File.exist?(snortrules_sidmsgtmp)
+    end
   end
 
   print_ok(print_length)
@@ -696,6 +702,34 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
       File.write("/etc/snort/#{@group_id}/sid-msg.map", "")
     else
       system("source /etc/snort/#{@group_id}/snort-binding-#{binding_id}/snort-bindings.conf; echo \"Binding: $BINDING_NAME\"")
+      bind_dir = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}"
+      FileUtils.mkdir_p(bind_dir) unless Dir.exist?(bind_dir)
+      FileUtils.mkdir_p("#{bind_dir}/dynamicrules") unless Dir.exist?("#{bind_dir}/dynamicrules")
+      FileUtils.mkdir_p("#{bind_dir}/so_rules-tmp") unless Dir.exist?("#{bind_dir}/so_rules-tmp")
+      FileUtils.mkdir_p("/etc/snort/#{@group_id}") unless Dir.exist?("/etc/snort/#{@group_id}")
+
+      bind_conf = "#{bind_dir}/snort-bindings.conf"
+      unless File.exist?(bind_conf)
+        File.write(bind_conf, <<~BINDING)
+          # Auto-generated minimal snort-bindings.conf for group #{@group_id} binding #{binding_id}
+          BINDING_NAME="binding-#{binding_id}"
+          # Puedes añadir aquí BINDING_IFACE, BINDING_MODE, etc.
+        BINDING
+        File.chmod(0644, bind_conf) rescue nil
+      end
+
+      rule_file = "#{bind_dir}/snort.rules"
+      preproc   = "#{bind_dir}/preprocessor.rules"
+      thresh    = "#{bind_dir}/threshold.conf"
+      File.write(rule_file, "# Empty rules for binding #{binding_id}\n") unless File.exist?(rule_file)
+      File.write(preproc, "# Empty preprocessor rules for binding #{binding_id}\n") unless File.exist?(preproc)
+      File.write(thresh, "# Empty threshold.conf\n") unless File.exist?(thresh)
+
+      group_sid = "/etc/snort/#{@group_id}/sid-msg.map"
+      File.write(group_sid, "# Auto-generated sid-msg.map for group #{@group_id}\n") unless File.exist?(group_sid)
+
+      system("source #{bind_conf} 2>/dev/null; echo \"Binding: $BINDING_NAME\"")
+
       @v_rules_dir            = "/etc/snort/#{@group_id}/rules"
       @v_dynamic_root         = "/etc/snort/#{@group_id}/dynamicrules"
       @v_backup_root          = "/etc/snort/#{@group_id}/backups"
