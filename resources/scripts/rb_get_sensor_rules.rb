@@ -178,7 +178,7 @@ opt = Getopt::Std.getopts("hg:b:i:d:n:srfw")
 if opt["h"] or opt["g"].nil? 
   printf "rb_get_sensor_rules.rb [-h] [-f] -g group_id -b binding_id -d dbversion_id\n"
   printf "    -h                -> print this help\n"
-  printf "    -g group_id       -> Group Id\n"
+  printf "    -g group_id       -> Group Id (numeric or full instance name)\n"
   printf "    -b binding_id     -> Binding Id\n"
   printf "    -d dbversion_ids  -> Rule database version IDs\n"
   printf "    -s                -> Save this command into the proper rb_get_sensor_rules.sh file\n"
@@ -187,9 +187,7 @@ if opt["h"] or opt["g"].nil?
   exit 1
 end
 
-@group_id      = opt["g"]
-@real_group_id = opt["i"]
-@real_sensor_id = opt["n"]
+@group_id_str  = opt["g"]
 savecmd        = !opt["s"].nil?
 reputation     = !opt["r"].nil?
 rollback       = opt["w"].nil?
@@ -206,35 +204,41 @@ cdomain = File.read('/etc/redborder/cdomain').strip rescue 'redborder.cluster'
 @client_name = File.read('/etc/chef/nodename').strip
 @client_id   = @client_name.split('-').last
 
-@v_group_dir            = "/etc/snort/#{@group_id}"
-@v_snortml_dir          = "/etc/snort/#{@group_id}/ml_models"
-@v_iplist_dir           = "/etc/snort/#{@group_id}/iplists"
+# NEW LOGIC: Determine instance_dir and numeric_group_id
+instance_dir = "/etc/snort/#{@group_id_str}"
+@numeric_group_id = @group_id_str.split('_').first
+
+if !Dir.exist?(instance_dir) or !File.exist?("#{instance_dir}/env")
+  print "ERROR: The group id #{@group_id_str} doesn't exist or has no CPUs assigned\n"
+  exit 1
+end
+
+@v_snortml_dir          = "#{instance_dir}/ml_models"
+@v_iplist_dir           = "#{instance_dir}/iplists"
 @v_iplistname           = "iplist_script.sh"
 @v_iplist               = "#{@v_iplist_dir}/#{@v_iplistname}"
 @v_iplist_zone          = "#{@v_iplist_dir}/zone.info"
-@v_geoip_dir            = "/etc/snort/#{@group_id}/geoips"
+@v_geoip_dir            = "#{instance_dir}/geoips"
 @v_geoipname            = "rbgeoip"
 @v_geoip                = "#{@v_geoip_dir}/#{@v_geoipname}"
 @v_unicode_mapname      = "unicode.map"
-@v_unicode_map          = "/etc/snort/#{@group_id}/#{@v_unicode_mapname}"
-@v_snortml_rule         = "/etc/snort/#{@group_id}/ml.rules"
+@v_unicode_map          = "#{instance_dir}/#{@v_unicode_mapname}"
+@v_snortml_rule         = "#{instance_dir}/ml.rules"
 
 @chef=ChefAPI.new(
   server: @weburl,
   use_ssl: true,
   ssl_insecure: true,
   client_name: @client_name,
-  key_file: "/etc/chef/client.pem" 
+  key_file: "/etc/chef/client.pem"
 )
 
 def print_ok(text_length=76)
-  #printf("%#{RES_COL - text_length}s", "[\e[32m  OK  \e[0m]")
   printf("%#{RES_COL - text_length}s", "[  OK  ]")
   puts ""
 end
 
 def print_fail(text_length=76)
-  #print sprintf("%#{RES_COL - text_length}s", "[\e[31m  FAILED  \e[0m]")
   print sprintf("%#{RES_COL - text_length}s", "[  FAILED  ]")
   puts ""
 end
@@ -246,8 +250,8 @@ def get_rules(remote_name, snortrules, binding_id)
 
   File.delete(snortrulestmp) if File.exist?(snortrulestmp)
 
-  result = @chef.get_request("/sensors/#{@real_sensor_id}/#{remote_name}?group_id=#{@real_group_id}&binding_id=#{binding_id}")
-  if result
+  result = @chef.get_request("/sensors/#{@client_id}/#{remote_name}?group_id=#{@numeric_group_id}&binding_id=#{binding_id}")
+  if result and !result.start_with?('<!DOCTYPE html>')
     File.open(snortrulestmp, 'w') { |f| f.write(result) }
 
     unless File.zero?(@v_snortml_rule)
@@ -275,170 +279,26 @@ def get_rules(remote_name, snortrules, binding_id)
   end
 end
 
-def create_sid_msg
-  print "Creating sig.msg file "
-  print_length = "Creating sig.msg file ".length
+def get_classifications(v_rulefile)
+  print "Downloading classifications "
+  print_length = "Downloading classifications ".length
 
-  snortrules_sidmsgtmp = "#{@v_sidfile}.tmp"
-  File.open(snortrules_sidmsgtmp, 'w') {}
+  v_classifications = File.join(File.dirname(v_rulefile), "classification.config")
+  File.delete "#{v_classifications}.tmp" if File.exist?("#{v_classifications}.tmp")
 
-  Dir.entries("/etc/snort/#{@group_id}/").select{|d| d =~ /^snort-binding-\d+$/}.each do |directory|
-    bind_base = "/etc/snort/#{@group_id}/#{directory}"
+  result = @chef.get_request("/sensors/#{@client_id}/classifications.txt?group_id=#{@numeric_group_id}")
 
-    rule_path = File.join(bind_base, "snort.rules")
-    if File.exist?(rule_path)
-      File.foreach(rule_path) do |line|
-        next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
-        m_sid = /sid:\s*(\d+);/.match(line)
-        m_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)
-        if m_sid && m_msg
-          File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{m_sid[1]} || #{m_msg[1]}\n"}
-        end
-      end
-    end
-
-    prep_path = File.join(bind_base, "preprocessor.rules")
-    if File.exist?(prep_path)
-      File.foreach(prep_path) do |line|
-        next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
-        m_sid = /sid:\s*(\d+);/.match(line)
-        m_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)
-        if m_sid && m_msg
-          File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{m_sid[1]} || #{m_msg[1]}\n"}
-        end
-      end
-    end
-
-    so_path = File.join(bind_base, "so.rules")
-    if File.exist?(so_path)
-      File.foreach(so_path) do |line|
-        next if (/^\s*\#/.match(line) or /^\s*$/.match(line))
-        m_sid = /sid:\s*(\d+);/.match(line)
-        m_msg = /[\(| ]msg:\s*\"([^\"]*)\";/.match(line)
-        if m_sid && m_msg
-          File.open(snortrules_sidmsgtmp, 'a') {|f| f.print "#{m_sid[1]} || #{m_msg[1]}\n"}
-        end
-      end
-    end
-    
-  end
-
-  if File.exist?(snortrules_sidmsgtmp)
-    v_md5sum_tmp  = Digest::MD5.hexdigest(File.read(snortrules_sidmsgtmp))
-    v_md5sum      = File.exist?(@v_sidfile) ? Digest::MD5.hexdigest(File.read(@v_sidfile)) : ""
-
-    if v_md5sum == v_md5sum_tmp
-      print "(not modified) "
-      print_length += "(not modified) ".length
-      File.delete(snortrules_sidmsgtmp) if File.exist?(snortrules_sidmsgtmp)
-    end
-  end
-
-  print_ok(print_length)
-
-end
-
-def get_dynamic_rules(dbversion_ids)
-
-  print "Downloading snort-so_rules-#{@v_snortversion} "
-  print_length = "Downloading snort-so_rules-#{@v_snortversion} ".length
-
-  FileUtils.remove_dir(@v_dynamucdirtmp) if Dir.exist?(@v_dynamucdirtmp)
-  FileUtils.mkdir_p @v_dynamucdirtmp
-  FileUtils.remove_dir(@v_so_rules_dir_tmp) if Dir.exist?(@v_so_rules_dir_tmp)
-  FileUtils.mkdir_p @v_so_rules_dir_tmp
-  File.delete @v_so_rulestmp if File.exist?(@v_so_rulestmp)
-
-  dbversion_ids.split(",").each do |dbversion_id|
-
-    result = @chef.get_request("/rule_versions/#{dbversion_id}/so_rules_file")
-
-    if result
-      open(@v_so_rulestmp, "wb") do |file|
-        file.write(result)
-      end
-
-      system("tar xzf #{@v_so_rulestmp} -C #{@v_so_rules_dir_tmp}")
-
-      files = find(@v_so_rules_dir_tmp, "snort-so_rules-#{@v_snortversion}.tar.gz")
-
-      if files.empty?
-        system("tar xzf #{@v_so_rules_dir_tmp}/snort-so_rules.tar.gz -C #{@v_dynamucdirtmp}")
-      else
-        system("tar xzf #{files.first} -C #{@v_dynamucdirtmp}")
-      end
-    end
-  end
-
-  system("diff -r #{@v_dynamucdirtmp} #{@v_dynamicdir} &>/dev/null")
-  if $?.success?
-    print "(not modified) "
-    print_length += "(not modified) ".length
-  else
-    File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
-  end
-
-  print_ok(print_length)
-  return true
-end
-
-def get_gen_msg
-
-  print "Downloading gen-msg.map "
-  print_length = "Downloading gen-msg.map ".length
-
-  File.delete GENFILE_TMP if File.exist? GENFILE_TMP
-
-  dbversion_ids = get_rule_db_version_ids
-  dbversion_ids.each do |dbversion_id|
-    result = @chef.get_request("/rule_versions/#{dbversion_id}/gen_msg_file")
-    
-    if result
-      File.open(GENFILE_TMP, "a") do |file|
-        file.write(result)
-      end
-    end
-  end
-
-  v_md5sum_tmp  = Digest::MD5.hexdigest(File.read(GENFILE_TMP))
-  v_md5sum      = File.exists?(GENFILE) ? Digest::MD5.hexdigest(File.read(GENFILE)) : ""
-
-  if v_md5sum != v_md5sum_tmp
-    File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
-  else
-    print "(not modified) "
-    print_length += "(not modified) ".length
-    File.delete(GENFILE_TMP) if File.exist?(GENFILE_TMP)
-  end
-
-  print_ok(print_length)
-  return true
-
-end
-
-def get_rule_db_version_ids
-  @chef.get_request("/sensors/#{@client_id}/get_rule_db_version_ids?group_id=#{@real_group_id}")
-end
-
-def get_thresholds(binding_id)
-  print "Downloading thresholds "
-  print_length = "Downloading thresholds ".length
-
-  File.delete "#{@v_threshold}.tmp" if File.exist?("#{@v_threshold}.tmp")
-
-  result = @chef.get_request("/sensors/#{@real_sensor_id}/thresholds.txt?group_id=#{@real_group_id}&binding_id=#{binding_id}")
-
-  if result
-    File.open("#{@v_threshold}.tmp", 'w') {|f| f.write(result)}
-    v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_threshold}.tmp"))
-    v_md5sum        = File.exists?(@v_threshold) ? Digest::MD5.hexdigest(File.read(@v_threshold)) : ""
+  if result and !result.start_with?('<!DOCTYPE html>')
+    File.open("#{v_classifications}.tmp", 'w') {|f| f.write(result)}
+    v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{v_classifications}.tmp"))
+    v_md5sum        = File.exists?(v_classifications) ? Digest::MD5.hexdigest(File.read(v_classifications)) : ""
 
     if v_md5sum != v_md5sum_tmp
       File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
     else
       print "(not modified) "
       print_length += "(not modified) ".length
-      File.delete("#{@v_threshold}.tmp") if File.exist?("#{@v_threshold}.tmp")
+      File.delete("#{v_classifications}.tmp") if File.exist?("#{v_classifications}.tmp")
     end
 
     print_ok(print_length)
@@ -447,23 +307,38 @@ def get_thresholds(binding_id)
     print_fail(print_length)
     return false
   end
-
 end
 
-def tensorflow_lite_model?(file_path)
-  File.open(file_path, "rb") do |f|
-    bytes = f.read(TFLITE_MAGIC.size)&.bytes
+def get_thresholds(binding_id, v_rulefile)
+  print "Downloading thresholds "
+  print_length = "Downloading thresholds ".length
 
-    if bytes.nil? || bytes.size < TFLITE_MAGIC.size
-      exit 1
+  v_threshold = File.join(File.dirname(v_rulefile), "events.lua")
+  File.delete "#{v_threshold}.tmp" if File.exist?("#{v_threshold}.tmp")
+
+  result = @chef.get_request("/sensors/#{@client_id}/thresholds.txt?group_id=#{@numeric_group_id}&binding_id=#{binding_id}")
+
+  if result and !result.start_with?('<!DOCTYPE html>')
+    content_to_write = result.gsub(/^#/, '--')
+    File.open("#{v_threshold}.tmp", 'w') {|f| f.write(content_to_write)}
+    
+    v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{v_threshold}.tmp"))
+    v_md5sum        = File.exists?(v_threshold) ? Digest::MD5.hexdigest(File.read(v_threshold)) : ""
+
+    if v_md5sum != v_md5sum_tmp
+      File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
+    else
+      print "(not modified) "
+      print_length += "(not modified) ".length
+      File.delete("#{v_threshold}.tmp") if File.exist?("#{v_threshold}.tmp")
     end
 
-    if bytes == TFLITE_MAGIC
-      return true
-    end
+    print_ok(print_length)
+    return true
+  else
+    print_fail(print_length)
+    return false
   end
-
-  return false
 end
 
 def get_snortml_model
@@ -479,7 +354,7 @@ def get_snortml_model
 
   result = @chef.get_request("/sensors/#{@client_id}/snortml_model")
 
-  if result
+  if result and !result.start_with?('<!DOCTYPE html>')
     File.open(tmp_file_path, 'wb') { |f| f.write(result) }
 
     if File.zero?(tmp_file_path)
@@ -521,25 +396,19 @@ def get_iplist_files
 
   File.delete "#{@v_iplist}.tmp" if File.exist?("#{@v_iplist}.tmp")
 
-  result = @chef.get_request("/sensors/#{@real_sensor_id}/iplist_v4.txt?group_id=#{@real_group_id}")
+  result = @chef.get_request("/sensors/#{@client_id}/iplist_v4.txt?group_id=#{@numeric_group_id}")
 
-  if result
+  if result and !result.start_with?('<!DOCTYPE html>')
     FileUtils.mkdir_p @v_iplist_dir
     File.open("#{@v_iplist}.tmp", File::CREAT|File::TRUNC|File::RDWR, 0755){|f| f.write(result)}
     v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_iplist}.tmp"))
     v_md5sum        = File.exists?(@v_iplist) ? Digest::MD5.hexdigest(File.read(@v_iplist)) : ""
 
     if v_md5sum != v_md5sum_tmp
+      system("rm -f #{@v_iplist}; mv #{@v_iplist}.tmp #{@v_iplist}; sh #{@v_iplist}")
       if File.zero?("#{@v_iplist_zone}")
-        system("rm -f #{@v_iplist}; mv #{@v_iplist}.tmp #{@v_iplist}; sh #{@v_iplist}")
-        if File.zero?("#{@v_iplist_zone}")
-          @reload_snort = 1
-        else
-          @restart_snort = 1
-          @reload_snort_ips = 1
-        end
+        @reload_snort = 1
       else
-        system("rm -f #{@v_iplist}; mv #{@v_iplist}.tmp #{@v_iplist}; sh #{@v_iplist}")
         @restart_snort = 1
         @reload_snort_ips = 1
       end
@@ -555,38 +424,7 @@ def get_iplist_files
     print_fail(print_length)
     return false
   end
-
 end
-
-def get_classifications
-  print "Downloading classifications "
-  print_length = "Downloading classifications ".length
-
-  File.delete "#{@v_classifications}.tmp" if File.exist?("#{@v_classifications}.tmp")
-
-  result = @chef.get_request("/sensors/#{@client_id}/classifications.txt?group_id=#{@group_id}")
-
-  if result
-    File.open("#{@v_classifications}.tmp", 'w') {|f| f.write(result)}
-    v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_classifications}.tmp"))
-    v_md5sum        = File.exists?(@v_classifications) ? Digest::MD5.hexdigest(File.read(@v_classifications)) : ""
-
-    if v_md5sum != v_md5sum_tmp
-      File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
-    else
-      print "(not modified) "
-      print_length += "(not modified) ".length
-      File.delete("#{@v_classifications}.tmp") if File.exist?("#{@v_classifications}.tmp")
-    end
-
-    print_ok(print_length)
-    return true
-  else
-    print_fail(print_length)
-    return false
-  end
-end
-
 
 def get_geoip_files
   print "Downloading geoip files "
@@ -594,11 +432,10 @@ def get_geoip_files
 
   File.delete "#{@v_geoip}.tmp" if File.exist?("#{@v_geoip}.tmp")
 
-  result = @chef.get_request("/sensors/#{@real_sensor_id}/geoip_v4.txt?group_id=#{@real_group_id}")
+  result = @chef.get_request("/sensors/#{@client_id}/geoip_v4.txt?group_id=#{@numeric_group_id}")
 
-  if result
+  if result and !result.start_with?('<!DOCTYPE html>')
     FileUtils.mkdir_p @v_geoip_dir
-
     File.open("#{@v_geoip}.tmp", File::CREAT|File::TRUNC|File::RDWR, 0755){|f| f.write(result)}
     v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_geoip}.tmp"))
     v_md5sum        = File.exists?(@v_geoip) ? Digest::MD5.hexdigest(File.read(@v_geoip)) : ""
@@ -620,7 +457,7 @@ def get_geoip_files
   end
 end
 
-def find(dir, filename="*.*")
+def find(dir, filename="*.*\"")
   Dir[ File.join(dir.split(/\\/), filename) ]
 end
 
@@ -650,196 +487,135 @@ if !File.exists?(CLIENTPEM)
   exit
 end
 
-BACKUPCOUNT             = 5
+BACKUPCOUNT = 5
 backups = []
+datestr = Time.now.strftime("%Y%m%d%H%M%S")
+backup_dir = "#{instance_dir}/backups"
+tmp_backup_tgz = "/tmp/rb_get_sensor_rules-#{File.basename(instance_dir)}-#{datestr}-#{rand(1000)}.tgz"
 
-if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
-  datestr = Time.now.strftime("%Y%m%d%H%M%S")
-  
-  @v_backup_dir           = "/etc/snort/#{@group_id}/backups"
-  @tmp_backup_tgz         = "/tmp/rb_get_sensor_rules-#{@group_id}-#{datestr}-#{rand(1000)}.tgz"
+FileUtils.mkdir_p backup_dir
+system("cd #{instance_dir}; tar czf #{tmp_backup_tgz} . 2>/dev/null")
 
-  FileUtils.mkdir_p @v_backup_dir
-  system("cd /etc/snort/#{@group_id}; tar czf #{@tmp_backup_tgz} . 2>/dev/null")
-  
-  if reputation
-    print "Reputation:\n"
-    get_iplist_files
-    get_geoip_files
-  end
-  
-  if @reload_snort == 1 or @restart_snort == 1
-    copy_backup(@v_backup_dir, datestr, "#{@v_iplist}.tmp"          , @v_iplist         , @v_iplistname, backups )
-    copy_backup(@v_backup_dir, datestr, "#{@v_geoip}.tmp"           , @v_geoip          , @v_geoipname,  backups )
-  end
-  
-  File.delete "#{@v_unicode_map}.tmp" if File.exist?("#{@v_unicode_map}.tmp")
-  binding_ids.each do |binding_id|
-    bind_match = /^([^:]+):([^:]+)$/.match(binding_id.to_s)
+if reputation
+  print "Reputation:\n"
+  get_iplist_files
+  get_geoip_files
+end
 
-    if bind_match.nil?
-      dbversion_ids = opt["d"].to_s
-      binding_id=binding_id.to_i
+if @reload_snort == 1 or @restart_snort == 1
+  copy_backup(backup_dir, datestr, "#{@v_iplist}.tmp", @v_iplist, @v_iplistname, backups)
+  copy_backup(backup_dir, datestr, "#{@v_geoip}.tmp", @v_geoip, @v_geoipname,  backups)
+end
+
+File.delete "#{instance_dir}/unicode.map.tmp" if File.exist?("#{instance_dir}/unicode.map.tmp")
+
+binding_ids.each do |binding_id|
+  binding_info = binding_id.to_s.split(',')
+  binding_info.each do |binfo|
+    binding_id_val = nil
+    dbversion_ids = []
+    bind_match = /^([^:]+):(.+)$/.match(binfo.strip)
+
+    if bind_match.nil? 
+      dbversion_ids = opt["d"].to_s.split(',')
+      binding_id_val = binfo.to_i
     else
-      dbversion_ids=bind_match[2].to_s
-      binding_id=bind_match[1].to_i
+      binding_id_val = bind_match[1].to_i
+      dbversion_ids = bind_match[2].to_s.split(',')
     end
 
-    if binding_id.nil? or binding_id<0
+    if binding_id_val.nil? or binding_id_val < 0
       print "Error: binding id not found or it is not valid\n"
-    elsif dbversion_ids.nil? or dbversion_ids.empty?
-      print "No rule DB versions specified for binding #{binding_id}. Cleaning up rules...\n"
+      next
+    elsif dbversion_ids.empty? or dbversion_ids.first.empty?
+      print "Error: dbversion id not found or it is not valid\n"
+      next
+    end
 
-      # Paths base
-      bind_path = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}"
-      FileUtils.mkdir_p bind_path
-
-      # Clear rule files (empty them)
-      File.write("#{bind_path}/snort.rules", "")
-      File.write("#{bind_path}/preprocessor.rules", "")
-      File.write("#{bind_path}/threshold.conf", "# Empty threshold.conf")
-      File.write("#{bind_path}/dynamicrules/.keep", "") unless Dir.exist?("#{bind_path}/dynamicrules")
-      File.write("/etc/snort/#{@group_id}/sid-msg.map", "")
-    else
-      system("source /etc/snort/#{@group_id}/snort-binding-#{binding_id}/snort-bindings.conf; echo \"Binding: $BINDING_NAME\"")
-      bind_dir = "/etc/snort/#{@group_id}/snort-binding-#{binding_id}"
-      FileUtils.mkdir_p(bind_dir) unless Dir.exist?(bind_dir)
-      FileUtils.mkdir_p("#{bind_dir}/dynamicrules") unless Dir.exist?("#{bind_dir}/dynamicrules")
-      FileUtils.mkdir_p("#{bind_dir}/so_rules-tmp") unless Dir.exist?("#{bind_dir}/so_rules-tmp")
-      FileUtils.mkdir_p("/etc/snort/#{@group_id}") unless Dir.exist?("/etc/snort/#{@group_id}")
-
-      bind_conf = "#{bind_dir}/snort-bindings.conf"
-      unless File.exist?(bind_conf)
-        File.write(bind_conf, <<~BINDING)
-          # Auto-generated minimal snort-bindings.conf for group #{@group_id} binding #{binding_id}
-          BINDING_NAME="binding-#{binding_id}"
-          # Puedes añadir aquí BINDING_IFACE, BINDING_MODE, etc.
-        BINDING
-        File.chmod(0644, bind_conf) rescue nil
-      end
-
-      rule_file = "#{bind_dir}/snort.rules"
-      preproc   = "#{bind_dir}/preprocessor.rules"
-      thresh    = "#{bind_dir}/threshold.conf"
-      File.write(rule_file, "# Empty rules for binding #{binding_id}\n") unless File.exist?(rule_file)
-      File.write(preproc, "# Empty preprocessor rules for binding #{binding_id}\n") unless File.exist?(preproc)
-      File.write(thresh, "# Empty threshold.conf\n") unless File.exist?(thresh)
-
-      group_sid = "/etc/snort/#{@group_id}/sid-msg.map"
-      File.write(group_sid, "# Auto-generated sid-msg.map for group #{@group_id}\n") unless File.exist?(group_sid)
-
-      system("source #{bind_conf} 2>/dev/null; echo \"Binding: $BINDING_NAME\"")
-
-      @v_rules_dir            = "/etc/snort/#{@group_id}/rules"
-      @v_dynamic_root         = "/etc/snort/#{@group_id}/dynamicrules"
-      @v_backup_root          = "/etc/snort/#{@group_id}/backups"
-      FileUtils.mkdir_p @v_rules_dir
-      FileUtils.mkdir_p @v_dynamic_root
-      FileUtils.mkdir_p @v_backup_root
-      @v_rulefilename         = "binding-#{binding_id}.rules"
-      @v_rulefile             = File.join(@v_rules_dir, @v_rulefilename)
-      @v_prepfilename         = "preprocessor.rules"
-      @v_dynamucdirtmp        = File.join(@v_dynamic_root, "binding-#{binding_id}-tmp")
-      @v_dynamicdir           = File.join(@v_dynamic_root, "binding-#{binding_id}")
-      @v_prepfile             = File.join(@v_dynamicdir, @v_prepfilename)
-      @v_cmdfile              = "/etc/snort/#{@group_id}/rb_get_sensor_rules_binding_#{binding_id}.sh"
-      @v_sidfilename          = "sid-msg.map"
-      @v_sidfile              = "/etc/snort/#{@group_id}/#{@v_sidfilename}"
-      @v_thresholdname        = "threshold.conf"
-      @v_threshold            = File.join(@v_dynamicdir, @v_thresholdname)
-      @v_classificationsname  = "classification.config"
-      @v_classifications      = "/etc/snort/#{@group_id}/#{@v_classificationsname}"
-      @v_snortversion         = `/usr/sbin/snort --version 2>&1|grep Version|sed 's/.*Version //'|awk '{print $1}'`.chomp
-      @v_so_rules_dir_tmp     = File.join(@v_dynamicdir, "so_rules-tmp")
-      @v_so_rulestmp          = File.join(@v_dynamicdir, "snort-so_rules-tmp.tar.gz")
-      @v_backup_dir           = File.join(@v_backup_root, "binding-#{binding_id}")
-
-      FileUtils.mkdir_p @v_backup_dir
-      FileUtils.mkdir_p @v_dynamicdir
-
-      get_rules("active_rules.txt", @v_rulefile, binding_id)
-      get_rules("preprocessor_rules.txt", @v_prepfile, binding_id)
-      get_dynamic_rules(dbversion_ids)
-      get_classifications
-      get_thresholds(binding_id)
+    v_rulefilename         = "snort.rules"
+    v_rulefile             = "#{instance_dir}/#{v_rulefilename}"
+    v_classificationsname  = "classification.config"
+    v_thresholdname        = "events.lua"
+    v_cmdfile              = "#{instance_dir}/rb_get_sensor_rules.sh"
+    
+    dbversion_ids.each do |dbid|
+      get_rules("active_rules.txt", v_rulefile, binding_id_val)
+      get_classifications(v_rulefile)
+      get_snortml_model
+      get_thresholds(binding_id_val, v_rulefile)
 
       if @reload_snort == 1 or @restart_snort == 1
         datestr = Time.now.strftime("%Y%m%d%H%M%S")
-
-        copy_backup(@v_backup_dir, datestr, "#{@v_rulefile}.tmp"        , @v_rulefile       , @v_rulefilename, backups )
-        copy_backup(@v_backup_dir, datestr, "#{@v_prepfile}.tmp"        , @v_prepfile       , @v_prepfilename, backups )
-        copy_backup(@v_backup_dir, datestr, "#{@v_classifications}.tmp" , @v_classifications, @v_classificationsname, backups )
-        copy_backup(@v_backup_dir, datestr, "#{@v_threshold}.tmp"       , @v_threshold      , @v_thresholdname, backups )
-
-        FileUtils.remove_dir(@v_dynamicdir) if Dir.exist?(@v_dynamicdir)
-        File.rename(@v_dynamucdirtmp, @v_dynamicdir) if Dir.exist?(@v_dynamucdirtmp)
-
-        create_sid_msg
-        copy_backup(@v_backup_dir, datestr, "#{@v_sidfile}.tmp", @v_sidfile, @v_sidfilename, backups )
+        v_classifications      = "#{instance_dir}/#{v_classificationsname}"
+        v_threshold            = "#{instance_dir}/#{v_thresholdname}"
+        copy_backup(backup_dir, datestr, "#{v_rulefile}.tmp", v_rulefile, v_rulefilename, backups)
+        copy_backup(backup_dir, datestr, "#{v_classifications}.tmp", v_classifications, v_classificationsname, backups)
+        copy_backup(backup_dir, datestr, "#{v_threshold}.tmp", v_threshold, v_thresholdname, backups)
       end
+    end
 
-      File.delete "#{@v_prepfile}.tmp" if File.exist?("#{@v_prepfile}.tmp")
-      File.delete "#{@v_sidfile}.tmp" if File.exist?("#{@v_sidfile}.tmp")
-      File.delete "#{@v_classifications}.tmp" if File.exist?("#{@v_classifications}.tmp")
-      File.delete "#{@v_rulefile}.tmp" if File.exist?("#{@v_rulefile}.tmp")
-      File.delete "#{@v_so_rulestmp}" if File.exist?("#{@v_so_rulestmp}")
-      File.delete "#{@v_threshold}.tmp" if File.exist?("#{@v_threshold}.tmp")
-      FileUtils.remove_dir(@v_dynamucdirtmp) if Dir.exist?(@v_dynamucdirtmp)
+    File.delete "#{v_rulefile}.tmp" if File.exist?("#{v_rulefile}.tmp")
+    v_classifications      = "#{instance_dir}/#{v_classificationsname}"
+    File.delete "#{v_classifications}.tmp" if File.exist?("#{v_classifications}.tmp")
+    v_threshold            = "#{instance_dir}/#{v_thresholdname}"
+    File.delete "#{v_threshold}.tmp" if File.exist?("#{v_threshold}.tmp")
 
-      if savecmd and @group_id and !binding_id.nil? and !dbversion_ids.nil? and !dbversion_ids.empty?
-        begin
-          file = File.open(@v_cmdfile, "w")
-          file.write("#!/bin/bash\n\n")
-          file.write("/usr/lib/redborder/bin/rb_get_sensor_rules.rb -f -r -g '#{@group_id}' -b '#{binding_id}' -d '#{dbversion_ids}'\n")
-        rescue IOError => e
-          print "Error saving #{file}"
-        ensure
-          file.close unless file == nil
+    if savecmd and @numeric_group_id and !binding_id_val.nil? and !dbversion_ids.empty?
+      begin
+        file = File.open(v_cmdfile, "w")
+        file.write("#!/bin/bash\n\n") 
+        file.write("/usr/lib/redborder/bin/rb_get_sensor_rules.rb -f -r -g '#{@group_id_str}' -b '#{binding_id_val}' -d '#{dbversion_ids.join(",")}'\n")
+      rescue IOError => e
+        print "Error saving #{file}"
+      ensure
+        file.close unless file == nil
+      end
+    end
+
+    if @reload_snort == 1 or @restart_snort == 1
+      v_classifications      = "#{instance_dir}/#{v_classificationsname}"
+      v_rulefile             = "#{instance_dir}/#{v_rulefilename}"
+      output = `/usr/lib/redborder/scripts/rb_remap_intrusion_rules.rb --no-color #{v_classifications} #{v_rulefile}`
+      print output
+      
+      snort_config_file = "#{instance_dir}/config.lua"
+      verify_output = `snort -c #{snort_config_file} -T 2>&1`
+      if $?.success?
+        if savecmd
+          system("systemctl reload snort3@#{File.basename(instance_dir)}") if @reload_snort == 1
+          print "Reloading snort #{File.basename(instance_dir)}" if @reload_snort == 1
+          system("systemctl restart snort3@#{File.basename(instance_dir)}") if @restart_snort == 1
+          print "Restarting snort #{File.basename(instance_dir)}" if @restart_snort == 1
+        else
+          system("systemctl reload snort3@#{File.basename(instance_dir)}") if @reload_snort == 1
+          print "Reloading snort #{File.basename(instance_dir)}" if @reload_snort == 1
+          system("systemctl restart snort3@#{File.basename(instance_dir)}") if @restart_snort == 1
+          print "Restarting snort #{File.basename(instance_dir)}" if @restart_snort == 1
+        end
+        if @reload_snort_ips == 1
+          sleep 15 
+          text_return = `/usr/lib/redborder/bin/rb_snort_iplist #{File.basename(instance_dir)}`
+          if text_return.match(/\A(ERROR: |Failed to read the response)/) and Dir.glob("#{instance_dir}/iplists/*.[w|b]lf").any?
+            print "The IP/Network reputation policy has not been applied. Try later and ensure that all segments is in non-bypass mode."
+          end
+          sleep 15
+        end
+      elsif rollback
+        puts "--- Detailed Snort Configuration Check Output ---"
+        puts verify_output
+        print "\n"
+        print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+        print "ERROR: configuration has errors and SNORT will not be reloaded. Rollback!! \n"
+        ret=1
+        if File.exists?(tmp_backup_tgz)
+          backups.each do |x|
+            File.delete(x) if File.exist?(x)
+          end
+          system("cd #{instance_dir}; tar xzf #{tmp_backup_tgz} . 2>/dev/null")
         end
       end
     end
   end
-
-  if @reload_snort == 1 or @restart_snort == 1
-    output = `/usr/lib/redborder/scripts/rb_remap_intrusion_rules.rb --no-color #{@v_classifications} #{@v_rulefile}`
-    print output
-    #before doing anything we need to check if it is correc
-    if system("/bin/env BOOTUP=none /usr/lib/redborder/bin/rb_verify_snort.sh #{@group_id}")
-      if savecmd
-        system("systemctl reload snort3@#{@group_id}") if @reload_snort == 1
-        print "Reloading snort #{@group_id}" if @reload_snort == 1
-        system("systemctl restart snort3@#{@group_id}") if @restart_snort == 1
-        print "Restarting snort #{@group_id}" if @restart_snort == 1
-      else
-        system("systemctl reload snort3@#{@group_id}") if @reload_snort == 1
-        print "Reloading snort #{@group_id}" if @reload_snort == 1
-        system("systemctl restart snort3@#{@group_id}") if @restart_snort == 1
-        print "Restarting snort #{@group_id}" if @restart_snort == 1
-      end
-      if @reload_snort_ips == 1
-        sleep 15 
-        text_return = `/usr/lib/redborder/bin/rb_snort_iplist #{@group_id}`
-        if text_return.match(/\A(ERROR: |Failed to read the response)/) and Dir.glob("/etc/snort/#{@group_id}/iplists/*.[w|b]lf").any?
-          print "The IP/Network reputation policy has not been applied. Try later and ensure that all segments is in non-bypass mode."
-        end
-        sleep 15
-      end
-    elsif rollback
-      print "\n"
-      print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-      print "ERROR: configuration has errors and SNORT will not be reloaded. Rollback!! \n"
-      ret=1
-      if File.exists?@tmp_backup_tgz
-        backups.each do |x|
-          File.delete(x) if File.exist?(x)
-        end
-        system("cd /etc/snort/#{@group_id}; tar xzf #{@tmp_backup_tgz} . 2>/dev/null")
-      end
-    end
-  end
-else
-  ret=1
-  print "ERROR: the group id #{@group_id} doesn't exist or has no CPUs assigned"
 end
 
 exit ret
