@@ -22,17 +22,15 @@ if [ "x$PID" == "x" ]; then
   if [ "x$*" == "x" ]; then
     pushd /etc/snort &>/dev/null
     counter=0
-    for g in $(ls * -d 2>/dev/null | sort -n); do
-      for n in $(ls -d /etc/snort/$g/snort-binding-* 2>/dev/null | sort); do
-        file="${n}/rb_get_sensor_rules.sh"
-        [ $counter -ne 0 ] && echo "--"
-        if [ -f $file ]; then
-          /bin/env BOOTUP=none bash $file
-        else
-          echo "$(dirname $file) has never been compiled!!"
-        fi
-        counter=$(( $counter + 1 ))
-      done
+    for d in $(find . -maxdepth 1 -type d ! -path . | sort); do
+      file="${d}/rb_get_sensor_rules.sh"
+      [ $counter -ne 0 ] && echo "--"
+      if [ -f "$file" ]; then
+        /bin/env BOOTUP=none bash "$file"
+      else
+        echo "$(dirname "$file") has never been compiled!!"
+      fi
+      counter=$((counter + 1))
     done
     popd &>/dev/null
   else
