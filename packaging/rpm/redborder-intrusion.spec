@@ -13,7 +13,6 @@ Source0: %{name}-%{version}.tar.gz
 Requires: bash dialog dmidecode rsync nc telnet redborder-common redborder-chef-client redborder-rubyrvm redborder-cli rb-register bridge-utils bpctl rb_bpwatcher-dkms net-tools bind-utils ipmitool watchdog bp_watchdog snort3 dhclient
 Requires: chef-workstation
 Requires: network-scripts network-scripts-teamd
-Requires: redborder-cgroups
 
 %description
 %{summary}
