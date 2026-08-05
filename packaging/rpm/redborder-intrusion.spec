@@ -13,7 +13,6 @@ Source0: %{name}-%{version}.tar.gz
 Requires: bash dialog dmidecode rsync nc telnet redborder-common redborder-chef-client redborder-rubyrvm redborder-cli rb-register bridge-utils bpctl rb_bpwatcher-dkms net-tools bind-utils ipmitool watchdog bp_watchdog snort3 dhclient
 Requires: chef-workstation
 Requires: network-scripts network-scripts-teamd
-Requires: redborder-cgroups
 
 %description
 %{summary}
@@ -87,6 +86,9 @@ echo "kernel.printk = 1 4 1 7" > /usr/lib/sysctl.d/99-redborder-printk.conf
 %doc
 
 %changelog
+* Wed Aug 5 2026 Nils Verschaeve <nverschaeve@redborder.com> - 2.0.0
+- Remove redborder-cgroups
+
 * Mon Jun 16 2025 Miguel Álvarez <rgomez@redborder.com> -
 - Add MacVendors & snort3 check scripts
 
