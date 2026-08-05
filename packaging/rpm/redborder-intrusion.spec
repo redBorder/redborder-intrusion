@@ -86,6 +86,9 @@ echo "kernel.printk = 1 4 1 7" > /usr/lib/sysctl.d/99-redborder-printk.conf
 %doc
 
 %changelog
+* Wed Aug 5 2026 Nils Verschaeve <nverschaeve@redborder.com> - 2.0.0
+- Remove redborder-cgroups
+
 * Mon Jun 16 2025 Miguel Álvarez <rgomez@redborder.com> -
 - Add MacVendors & snort3 check scripts
 
