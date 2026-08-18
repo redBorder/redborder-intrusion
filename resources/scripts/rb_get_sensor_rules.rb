@@ -341,6 +341,22 @@ def get_thresholds(binding_id, v_rulefile)
   end
 end
 
+def tensorflow_lite_model?(file_path)
+  File.open(file_path, "rb") do |f|
+    bytes = f.read(TFLITE_MAGIC.size)&.bytes
+
+    if bytes.nil? || bytes.size < TFLITE_MAGIC.size
+      exit 1
+    end
+
+    if bytes == TFLITE_MAGIC
+      return true
+    end
+  end
+
+  return false
+end
+
 def get_snortml_model
   puts "Downloading SnortML model..."
   print_length = "Downloading SnortML model...".length
@@ -457,7 +473,7 @@ def get_geoip_files
   end
 end
 
-def find(dir, filename="*.*\"")
+def find(dir, filename="*.*")
   Dir[ File.join(dir.split(/\\/), filename) ]
 end
 
