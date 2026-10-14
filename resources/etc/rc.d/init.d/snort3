@@ -32,7 +32,7 @@ execute_action() {
   sleep "$SLEEP_INTERVAL"
 
   if [ "$action" = "status" ]; then
-    /usr/lib/rvm/bin/rvm ruby-2.7.5@web do "$RUBY_SCRIPT" "$group" &>/dev/null
+    /usr/lib/rvm/bin/rvm ruby-3.4.11@global do "$RUBY_SCRIPT" "$group" &>/dev/null
     rc=$?
   else
     systemctl "$action" "${SNORT_UNIT_PREFIX}${group}" &>/dev/null

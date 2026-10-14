@@ -10,8 +10,10 @@ License: AGPL 3.0
 URL: https://github.com/redBorder/redborder-intrusion
 Source0: %{name}-%{version}.tar.gz
 
-Requires: bash dialog dmidecode rsync nc telnet redborder-common redborder-chef-client redborder-rubyrvm redborder-cli rb-register bridge-utils bpctl rb_bpwatcher-dkms net-tools bind-utils ipmitool watchdog bp_watchdog snort3 dhclient
+Requires: bash dialog dmidecode rsync nc telnet redborder-common redborder-chef-client redborder-cli rb-register bridge-utils bpctl rb_bpwatcher-dkms net-tools bind-utils ipmitool watchdog bp_watchdog snort3 dhclient
 Requires: chef-workstation
+# Runs scripts with ruby-3.4.11@global, which redborder-rubyrvm >= 4.0.0 installs
+Requires: redborder-rubyrvm >= 4.0.0
 Requires: network-scripts network-scripts-teamd
 
 %description
