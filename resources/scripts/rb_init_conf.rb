@@ -70,7 +70,7 @@ File.open("/etc/redborder/cdomain", "w") { |f| f.puts "#{cdomain}" }
 
 # Apply config preparation
 #system('systemctl stop chef-client &>/dev/null')
-system('service snortd stop &>/dev/null') if File.exists?("/etc/rc.d/init.d/snortd")
+system('service snortd stop &>/dev/null') if File.exist?("/etc/rc.d/init.d/snortd")
 # TODO: /etc/sysconfig/network-scripts/ifcfg-* is needed?
 system('service kdump stop &>/dev/null')
 # TODO: rm -f /etc/sysconfig/network-scripts/route-* is needed?
