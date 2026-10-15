@@ -294,7 +294,7 @@ def get_gen_msg
   end
 
   v_md5sum_tmp  = Digest::MD5.hexdigest(File.read(GENFILE_TMP))
-  v_md5sum      = File.exists?(GENFILE) ? Digest::MD5.hexdigest(File.read(GENFILE)) : ""
+  v_md5sum      = File.exist?(GENFILE) ? Digest::MD5.hexdigest(File.read(GENFILE)) : ""
 
   if v_md5sum != v_md5sum_tmp
     File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
@@ -320,7 +320,7 @@ def get_classifications
   if result
     File.open("#{@v_classifications}.tmp", 'w') {|f| f.write(result)}
     v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_classifications}.tmp"))
-    v_md5sum        = File.exists?(@v_classifications) ? Digest::MD5.hexdigest(File.read(@v_classifications)) : ""
+    v_md5sum        = File.exist?(@v_classifications) ? Digest::MD5.hexdigest(File.read(@v_classifications)) : ""
 
     if v_md5sum != v_md5sum_tmp
       File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
@@ -353,7 +353,7 @@ def get_thresholds(binding_id)
   if result
     File.open("#{@v_threshold}.tmp", 'w') {|f| f.write(result)}
     v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_threshold}.tmp"))
-    v_md5sum        = File.exists?(@v_threshold) ? Digest::MD5.hexdigest(File.read(@v_threshold)) : ""
+    v_md5sum        = File.exist?(@v_threshold) ? Digest::MD5.hexdigest(File.read(@v_threshold)) : ""
 
     if v_md5sum != v_md5sum_tmp
       File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
@@ -449,7 +449,7 @@ def get_iplist_files
     FileUtils.mkdir_p @v_iplist_dir
     File.open("#{@v_iplist}.tmp", File::CREAT|File::TRUNC|File::RDWR, 0755){|f| f.write(result)}
     v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_iplist}.tmp"))
-    v_md5sum        = File.exists?(@v_iplist) ? Digest::MD5.hexdigest(File.read(@v_iplist)) : ""
+    v_md5sum        = File.exist?(@v_iplist) ? Digest::MD5.hexdigest(File.read(@v_iplist)) : ""
 
     if v_md5sum != v_md5sum_tmp
       if File.zero?("#{@v_iplist_zone}")
@@ -491,7 +491,7 @@ def get_classifications
   if result
     File.open("#{@v_classifications}.tmp", 'w') {|f| f.write(result)}
     v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_classifications}.tmp"))
-    v_md5sum        = File.exists?(@v_classifications) ? Digest::MD5.hexdigest(File.read(@v_classifications)) : ""
+    v_md5sum        = File.exist?(@v_classifications) ? Digest::MD5.hexdigest(File.read(@v_classifications)) : ""
 
     if v_md5sum != v_md5sum_tmp
       File.zero?(@v_iplist_zone) ? @reload_snort = 1 : @restart_snort = 1
@@ -523,7 +523,7 @@ def get_geoip_files
 
     File.open("#{@v_geoip}.tmp", File::CREAT|File::TRUNC|File::RDWR, 0755){|f| f.write(result)}
     v_md5sum_tmp    = Digest::MD5.hexdigest(File.read("#{@v_geoip}.tmp"))
-    v_md5sum        = File.exists?(@v_geoip) ? Digest::MD5.hexdigest(File.read(@v_geoip)) : ""
+    v_md5sum        = File.exist?(@v_geoip) ? Digest::MD5.hexdigest(File.read(@v_geoip)) : ""
 
     if v_md5sum != v_md5sum_tmp
       system("rm -f #{@v_geoip}; mv #{@v_geoip}.tmp #{@v_geoip}; sh #{@v_geoip}")
@@ -567,7 +567,7 @@ def copy_backup( backup_dir, datestr, temp_file_path, final_file_path, filename,
   end
 end
 
-if !File.exists?(CLIENTPEM)
+if !File.exist?(CLIENTPEM)
   puts "The sensor is not registered!"
   exit
 end
@@ -575,7 +575,7 @@ end
 BACKUPCOUNT             = 5
 backups = []
 
-if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
+if Dir.exist?@v_group_dir and File.exist?"#{@v_group_dir}/env"
   datestr = Time.now.strftime("%Y%m%d%H%M%S")
   
   @v_backup_dir           = "/etc/snort/#{@group_id}/backups"
@@ -682,7 +682,7 @@ if Dir.exist?@v_group_dir and File.exists?"#{@v_group_dir}/env"
       print "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
       print "ERROR: configuration has errors and SNORT will not be reloaded. Rollback!! \n"
       ret=1
-      if File.exists?@tmp_backup_tgz
+      if File.exist?@tmp_backup_tgz
         backups.each do |x|
           File.delete(x) if File.exist?(x)
         end
