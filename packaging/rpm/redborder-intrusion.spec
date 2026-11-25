@@ -10,8 +10,7 @@ License: AGPL 3.0
 URL: https://github.com/redBorder/redborder-intrusion
 Source0: %{name}-%{version}.tar.gz
 
-Requires: bash dialog dmidecode rsync nc telnet redborder-common redborder-chef-client redborder-rubyrvm redborder-cli rb-register bridge-utils bpctl rb_bpwatcher-dkms net-tools bind-utils ipmitool watchdog bp_watchdog snort3 dhclient
-Requires: chef-workstation
+Requires: bash dialog dmidecode rsync nc telnet redborder-common redborder-cinc-client redborder-rubyrvm redborder-cli rb-register bridge-utils bpctl rb_bpwatcher-dkms net-tools bind-utils ipmitool watchdog bp_watchdog snort3 dhclient
 Requires: network-scripts network-scripts-teamd
 
 %description
@@ -54,9 +53,6 @@ install -D -m 0755 resources/lib/dhclient-enter-hooks %{buildroot}/usr/lib/redbo
 %pre
 
 %post
-if ls /opt/chef-workstation/embedded/lib/ruby/gems/3.1.0/specifications/default/openssl-3.0.1.* 1> /dev/null 2>&1; then
-    rm -f /opt/chef-workstation/embedded/lib/ruby/gems/3.1.0/specifications/default/openssl-3.0.1.*
-fi
 [ -f /usr/lib/redborder/bin/rb_rubywrapper.sh ] && /usr/lib/redborder/bin/rb_rubywrapper.sh -c
 systemctl daemon-reload
 # adjust kernel printk settings for the console
@@ -86,6 +82,9 @@ echo "kernel.printk = 1 4 1 7" > /usr/lib/sysctl.d/99-redborder-printk.conf
 %doc
 
 %changelog
+* Wed Nov 25 2026 Miguel Negrón <manegron@redborder.com>
+- Migrate from Chef to Cinc: require redborder-cinc-client instead of redborder-chef-client and chef-workstation
+
 * Wed Aug 5 2026 Nils Verschaeve <nverschaeve@redborder.com> - 2.0.0
 - Remove redborder-cgroups
 
